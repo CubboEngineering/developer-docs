@@ -11,7 +11,6 @@ Este passo a passo leva você das credenciais até um pedido criado.
 - O `client_id` e o `client_secret` de uma integração Open API criada no app da Cubbo. Veja [Configure sua integração](/pt-BR/guides/setup).
 - O `store_id` da sua loja de teste.
 - Pelo menos uma modalidade de envio configurada na integração. O nome dela é o `shipping_line_code` que você envia com o pedido.
-- Um produto já criado nessa loja, para que o pedido possa referenciar seu `sku`.
 
 ## Passos
 
@@ -38,13 +37,56 @@ Este passo a passo leva você das credenciais até um pedido criado.
     }
     ```
   </Step>
-  <Step title="Verifique se os produtos existem">
-    Liste o inventário da loja e confirme o SKU que você pretende vender.
+  <Step title="Crie um produto">
+    Cadastre o produto que você vai vender. Os `skus` e o código de barras (`upc`) devem ser únicos na loja. Envie o
+    peso e as dimensões para que a Cubbo escolha a embalagem certa e cote o frete. Gramas são convertidos em
+    quilogramas.
+
+    ```bash
+    curl -X POST https://api.cubbo.com/v1/products \
+      -H "Authorization: Bearer <token>" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "store_id": 1234,
+        "name": "Red T-shirt M",
+        "skus": ["SKU-RED-M"],
+        "upc": "7501234567890",
+        "price": 299.00,
+        "weight": 250,
+        "weight_unit": "g",
+        "length": 30,
+        "width": 25,
+        "height": 3,
+        "dimension_unit": "cm"
+      }'
+    ```
+
+    ```json
+    {
+      "id": 12345,
+      "name": "Red T-shirt M",
+      "bar_code": "7501234567890",
+      "is_kit": false,
+      "price": "299.0",
+      "weight": 0.25,
+      "product_codes": [{ "id": 9001, "sku": "SKU-RED-M" }]
+    }
+    ```
+
+    Todos os campos estão descritos em [Create a product](/api-reference/inventory/create-a-product).
+  </Step>
+  <Step title="Consulte o inventário">
+    Liste o inventário da loja e confirme que o SKU aparece.
 
     ```bash
     curl "https://api.cubbo.com/v1/inventory?store_id=1234&sku=SKU-RED-M" \
       -H "Authorization: Bearer <token>"
     ```
+
+    <Note>
+    Um produto novo não tem estoque até o armazém recebê-lo. Envie-o com um recebimento
+    (`POST /v1/replenishments`). Um pedido de um produto sem estoque fica em `backorder` até o estoque chegar.
+    </Note>
   </Step>
   <Step title="Crie um pedido">
     Envie o endereço de entrega do comprador e os produtos a serem enviados. `order_number` é a sua própria referência e

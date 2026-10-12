@@ -11,7 +11,6 @@ This walkthrough takes you from credentials to a created order.
 - The `client_id` and `client_secret` of an Open API integration created in the Cubbo app. See [Set up your integration](/guides/setup).
 - The `store_id` of your test store.
 - At least one shipping method mapped in the integration. Its name is the `shipping_line_code` you send with the order.
-- A product already created in that store, so the order can reference its `sku`.
 
 ## Steps
 
@@ -38,13 +37,55 @@ This walkthrough takes you from credentials to a created order.
     }
     ```
   </Step>
-  <Step title="Check the products exist">
-    List the store's inventory and confirm the SKU you plan to sell.
+  <Step title="Create a product">
+    Register the product you will sell. `skus` and the barcode (`upc`) must be unique in the store. Send the weight
+    and dimensions so Cubbo can choose the right package and quote shipping. Grams are converted to kilograms.
+
+    ```bash
+    curl -X POST https://api.cubbo.com/v1/products \
+      -H "Authorization: Bearer <token>" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "store_id": 1234,
+        "name": "Red T-shirt M",
+        "skus": ["SKU-RED-M"],
+        "upc": "7501234567890",
+        "price": 299.00,
+        "weight": 250,
+        "weight_unit": "g",
+        "length": 30,
+        "width": 25,
+        "height": 3,
+        "dimension_unit": "cm"
+      }'
+    ```
+
+    ```json
+    {
+      "id": 12345,
+      "name": "Red T-shirt M",
+      "bar_code": "7501234567890",
+      "is_kit": false,
+      "price": "299.0",
+      "weight": 0.25,
+      "product_codes": [{ "id": 9001, "sku": "SKU-RED-M" }]
+    }
+    ```
+
+    Every field is described in [Create a product](/api-reference/inventory/create-a-product).
+  </Step>
+  <Step title="Check the inventory">
+    List the store's inventory and confirm the SKU appears.
 
     ```bash
     curl "https://api.cubbo.com/v1/inventory?store_id=1234&sku=SKU-RED-M" \
       -H "Authorization: Bearer <token>"
     ```
+
+    <Note>
+    A new product has no stock until the warehouse receives it. Send it with a replenishment
+    (`POST /v1/replenishments`). An order for a product without stock waits in `backorder` until stock arrives.
+    </Note>
   </Step>
   <Step title="Create an order">
     Send the buyer's shipping address and the products to ship. `order_number` is your own reference and

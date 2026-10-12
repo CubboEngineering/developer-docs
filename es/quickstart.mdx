@@ -11,7 +11,6 @@ Esta guía te lleva desde las credenciales hasta una orden creada.
 - El `client_id` y el `client_secret` de una integración Open API creada en la app de Cubbo. Consulta [Configura tu integración](/es/guides/setup).
 - El `store_id` de tu tienda de prueba.
 - Al menos un método de envío configurado en la integración. Su nombre es el `shipping_line_code` que envías con la orden.
-- Un producto ya creado en esa tienda, para que la orden pueda hacer referencia a su `sku`.
 
 ## Pasos
 
@@ -38,13 +37,56 @@ Esta guía te lleva desde las credenciales hasta una orden creada.
     }
     ```
   </Step>
-  <Step title="Verifica que los productos existan">
-    Lista el inventario de la tienda y confirma el SKU que planeas vender.
+  <Step title="Crea un producto">
+    Registra el producto que vas a vender. Los `skus` y el código de barras (`upc`) deben ser únicos en la tienda.
+    Envía el peso y las dimensiones para que Cubbo elija el empaque correcto y cotice el envío. Los gramos se
+    convierten a kilogramos.
+
+    ```bash
+    curl -X POST https://api.cubbo.com/v1/products \
+      -H "Authorization: Bearer <token>" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "store_id": 1234,
+        "name": "Red T-shirt M",
+        "skus": ["SKU-RED-M"],
+        "upc": "7501234567890",
+        "price": 299.00,
+        "weight": 250,
+        "weight_unit": "g",
+        "length": 30,
+        "width": 25,
+        "height": 3,
+        "dimension_unit": "cm"
+      }'
+    ```
+
+    ```json
+    {
+      "id": 12345,
+      "name": "Red T-shirt M",
+      "bar_code": "7501234567890",
+      "is_kit": false,
+      "price": "299.0",
+      "weight": 0.25,
+      "product_codes": [{ "id": 9001, "sku": "SKU-RED-M" }]
+    }
+    ```
+
+    Todos los campos están descritos en [Create a product](/api-reference/inventory/create-a-product).
+  </Step>
+  <Step title="Consulta el inventario">
+    Lista el inventario de la tienda y confirma que aparece el SKU.
 
     ```bash
     curl "https://api.cubbo.com/v1/inventory?store_id=1234&sku=SKU-RED-M" \
       -H "Authorization: Bearer <token>"
     ```
+
+    <Note>
+    Un producto nuevo no tiene stock hasta que el almacén lo recibe. Envíalo con un reabastecimiento
+    (`POST /v1/replenishments`). Una orden de un producto sin stock queda en `backorder` hasta que llega el stock.
+    </Note>
   </Step>
   <Step title="Crea una orden">
     Envía la dirección de envío del comprador y los productos a enviar. `order_number` es tu propia referencia y
