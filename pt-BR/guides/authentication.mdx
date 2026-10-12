@@ -70,6 +70,7 @@ Todas as falhas de autenticação retornam HTTP `401` com este corpo:
 | `not allowed to show? this Store` (e similares) | O token é válido, mas a conta não pode acessar a loja ou o recurso solicitado. |
 
 <Note>
-As credenciais pertencem a uma empresa, não a uma pessoa. Se um secret vazar, peça à Cubbo para rotacioná-lo. Os tokens emitidos
-com o secret antigo continuam válidos até expirarem.
+As credenciais pertencem a uma empresa, não a uma pessoa. Se um secret vazar, regenere as credenciais no app da
+Cubbo: abra **Integrações** e clique em **Regenerar Credenciais** na sua integração Open API. As credenciais atuais
+param de funcionar imediatamente, então atualize seu sistema logo em seguida.
 </Note>

@@ -54,3 +54,16 @@ pre,
 [class*="code-group"] {
   border-radius: var(--cubbo-radius-sm) !important;
 }
+
+/* Inline code: OMS pill colors so it stands out on the light background */
+html:not(.dark) :not(pre) > code {
+  background-color: #e8f0fe !important;
+  color: #1e3a8a !important;
+  border: 1px solid #c7dafc !important;
+  border-radius: 4px !important;
+  padding: 0.1em 0.4em !important;
+}
+html:not(.dark) a > code,
+html:not(.dark) a :not(pre) > code {
+  color: #327cfb !important;
+}

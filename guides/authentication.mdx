@@ -70,6 +70,7 @@ All authentication failures return HTTP `401` with this body:
 | `not allowed to show? this Store` (and similar) | The token is valid but the account cannot access the requested store or resource. |
 
 <Note>
-Credentials belong to a company, not to a person. If a secret leaks, ask Cubbo to rotate it. Tokens issued
-with the old secret stay valid until they expire.
+Credentials belong to a company, not to a person. If a secret leaks, regenerate the credentials in the Cubbo
+app: open **Integrations** and click **Regenerate Credentials** on your Open API integration. The current
+credentials stop working immediately, so update your system right away.
 </Note>
