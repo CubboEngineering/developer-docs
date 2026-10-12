@@ -1,12 +1,12 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Cubbo API",
+  "name": "Cubbo Developers",
   "description": "Developer documentation for the Cubbo Clients API: orders, inventory, replenishments, returns, shipping and webhooks.",
   "colors": {
-    "primary": "#0C8C5E",
-    "light": "#18E299",
-    "dark": "#0C8C5E"
+    "primary": "#327cfb",
+    "light": "#60a5fa",
+    "dark": "#327cfb"
   },
   "favicon": "/favicon.svg",
   "logo": {
@@ -54,7 +54,12 @@
         "label": "Cubbo",
         "href": "https://cubbo.com"
       }
-    ]
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Get credentials",
+      "href": "/quickstart"
+    }
   },
   "contextual": {
     "options": [
@@ -71,5 +76,14 @@
     "socials": {
       "linkedin": "https://www.linkedin.com/company/cubbo"
     }
+  },
+  "background": {
+    "color": {
+      "light": "#f3f4f6",
+      "dark": "#0b1229"
+    }
+  },
+  "styling": {
+    "codeblocks": "dark"
   }
 }
