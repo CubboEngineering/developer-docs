@@ -94,23 +94,27 @@ collect en la referencia de la API.
 
 ## 4. Configura los webhooks
 
-Haz clic en **Configurar Webhooks** en la tarjeta de la integración.
+Haz clic en **Configurar Webhooks** en la tarjeta de la integración. Activa cada webhook que necesites y escribe su URL:
 
-| Opción | Qué hace |
+| Webhook | Eventos que recibe |
 |---|---|
-| **URL del Webhook de Órdenes** | Recibe `orderUpdated`, `orderFulfilled` y `shippingUpdated`. |
-| **URL del Webhook de Inventario** | Recibe `inventoryMovement`. Solo envía mientras el webhook de órdenes está activo. |
-| **Headers Personalizados** | Headers fijos que se agregan a cada solicitud de webhook, por ejemplo una API key de tu endpoint. |
-| **Probar** | Envía una solicitud de prueba. Pasa cuando tu URL responde `200`. |
-| **Secreto Compartido del Webhook** | La llave para verificar la firma. Haz clic en **Ver secreto** para copiarla. |
-| **Regenerar secreto compartido del webhook** | Invalida el secreto actual. Actualízalo en tu sistema después de guardar. |
+| **Webhook de Órdenes** | `orderUpdated`, `orderFulfilled`, `shippingUpdated` |
+| **Webhook de Inventario** | `inventoryMovement`. Solo envía mientras el webhook de órdenes está activo. |
+| **Webhook de Recibos de Inventario** | `replenishmentCreated`, `replenishmentScheduled`, `replenishmentStatus` |
 
-Las URL deben usar HTTPS y un nombre de dominio; las direcciones IP se rechazan. La tarjeta muestra si cada webhook
-funciona y cuándo fue el último envío exitoso.
+<Frame>
+  <img src="/images/setup/configure-webhooks.png" alt="Pantalla Configurar Webhooks con los webhooks de órdenes, inventario y recibos de inventario, y el secreto compartido" />
+</Frame>
 
-<Note>
-Los eventos de reabastecimiento todavía no se configuran desde la app. Pide a tu contacto de Cubbo que los active.
-</Note>
+En la misma pantalla:
+
+- **Headers Personalizados** agrega headers fijos a cada solicitud de webhook, por ejemplo una API key de tu endpoint.
+- **Probar** envía una solicitud de prueba. Pasa cuando tu URL responde `200`.
+- **Secreto Compartido del Webhook** es la llave para verificar la firma. Haz clic en **Ver secreto** para copiarla.
+- **Regenerar secreto compartido del webhook** invalida el secreto actual. Actualízalo en tu sistema después de guardar.
+
+Las URL deben usar HTTPS y un nombre de dominio; las direcciones IP se rechazan. La tarjeta de la integración muestra
+si cada webhook funciona y cuándo fue el último envío exitoso.
 
 Consulta [Webhooks](/es/guides/webhooks) para ver los eventos, los payloads y la verificación de la firma.
 

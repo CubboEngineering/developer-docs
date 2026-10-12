@@ -99,23 +99,27 @@ na referência da API.
 
 ## 4. Configure os webhooks
 
-Clique em **Configurar Webhooks** no cartão da integração.
+Clique em **Configurar Webhooks** no cartão da integração. Ative cada webhook de que você precisa e informe a URL:
 
-| Opção | O que faz |
+| Webhook | Eventos que recebe |
 |---|---|
-| **URL do Webhook de Pedidos** | Recebe `orderUpdated`, `orderFulfilled` e `shippingUpdated`. |
-| **URL do Webhook de Inventário** | Recebe `inventoryMovement`. Só envia enquanto o webhook de pedidos estiver ativo. |
-| **Headers Personalizados** | Headers fixos adicionados a cada requisição de webhook, por exemplo uma API key do seu endpoint. |
-| **Testar** | Envia uma requisição de teste. Passa quando sua URL responde `200`. |
-| **Segredo Compartilhado do Webhook** | A chave para verificar a assinatura. Clique em **Ver segredo** para copiá-la. |
-| **Regenerar segredo compartilhado do webhook** | Invalida o segredo atual. Atualize-o no seu sistema depois de salvar. |
+| Pedidos | `orderUpdated`, `orderFulfilled`, `shippingUpdated` |
+| Inventário | `inventoryMovement`. Só envia enquanto o webhook de pedidos estiver ativo. |
+| Remessas de estoque | `replenishmentCreated`, `replenishmentScheduled`, `replenishmentStatus` |
 
-As URLs devem usar HTTPS e um nome de domínio; endereços IP são rejeitados. O cartão mostra se cada webhook está
-funcionando e quando foi a última entrega bem-sucedida.
+<Frame>
+  <img src="/images/setup/configure-webhooks.png" alt="Tela Configurar Webhooks com os webhooks de pedidos, inventário e remessas de estoque, e o segredo compartilhado" />
+</Frame>
 
-<Note>
-Os eventos de recebimento ainda não são configurados pelo app. Peça ao seu contato na Cubbo para ativá-los.
-</Note>
+Na mesma tela:
+
+- **Headers Personalizados** adiciona headers fixos a cada requisição de webhook, por exemplo uma API key do seu endpoint.
+- **Testar** envia uma requisição de teste. Passa quando sua URL responde `200`.
+- **Segredo Compartilhado do Webhook** é a chave para verificar a assinatura. Clique em **Ver segredo** para copiá-la.
+- **Regenerar segredo compartilhado do webhook** invalida o segredo atual. Atualize-o no seu sistema depois de salvar.
+
+As URLs devem usar HTTPS e um nome de domínio; endereços IP são rejeitados. O cartão da integração mostra se cada
+webhook está funcionando e quando foi a última entrega bem-sucedida.
 
 Veja [Webhooks](/pt-BR/guides/webhooks) para os eventos, os payloads e a verificação da assinatura.
 

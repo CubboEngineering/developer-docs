@@ -30,11 +30,10 @@ of each event is in the API reference under **Webhooks**.
 Your endpoint must use `https` and a domain name. IP addresses are rejected.
 
 Configure it in the Cubbo app: open **Integrations**, find your Open API integration and click
-**Configure Webhooks**. There you set the orders and inventory URLs, add custom headers, test the URL and copy
-the shared secret. See [Set up your integration](/guides/setup#4-configure-webhooks).
+**Configure Webhooks**. There you turn on the orders, inventory and inventory replenishment webhooks, set their
+URLs, add custom headers, test the URL and copy the shared secret. See [Set up your integration](/guides/setup#4-configure-webhooks).
 
-Replenishment events and OAuth authentication to your endpoint are not configurable in the app yet. Ask your
-Cubbo contact to enable them.
+If your endpoint requires OAuth client credentials, ask your Cubbo contact to configure them.
 
 The inventory feed only sends while the orders feed is enabled. The replenishments feed is independent.
 

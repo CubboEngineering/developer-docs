@@ -30,11 +30,10 @@ de cada evento está na referência da API, em **Webhooks**.
 Seu endpoint deve usar `https` e um nome de domínio. Endereços IP são rejeitados.
 
 Configure-o no app da Cubbo: abra **Integrações**, encontre sua integração Open API e clique em
-**Configurar Webhooks**. Lá você define as URLs de pedidos e inventário, adiciona headers personalizados, testa a
-URL e copia o segredo compartilhado. Veja [Configure sua integração](/pt-BR/guides/setup#4-configure-os-webhooks).
+**Configurar Webhooks**. Lá você ativa os webhooks de pedidos, inventário e remessas de estoque, define as URLs,
+adiciona headers personalizados, testa a URL e copia o segredo compartilhado. Veja [Configure sua integração](/pt-BR/guides/setup#4-configure-os-webhooks).
 
-Os eventos de recebimento e a autenticação OAuth no seu endpoint ainda não são configurados pelo app. Peça ao seu
-contato na Cubbo para ativá-los.
+Se o seu endpoint exige credenciais de cliente OAuth, peça ao seu contato na Cubbo para configurá-las.
 
 O feed de inventário só envia eventos enquanto o feed de pedidos estiver ativado. O feed de recebimentos é independente.
 

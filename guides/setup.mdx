@@ -98,23 +98,27 @@ the API reference.
 
 ## 4. Configure webhooks
 
-Click **Configure Webhooks** on the integration card.
+Click **Configure Webhooks** on the integration card. Turn on each webhook you need and enter its URL:
 
-| Setting | What it does |
+| Webhook | Events it receives |
 |---|---|
-| **Orders Webhook URL** | Receives `orderUpdated`, `orderFulfilled` and `shippingUpdated`. |
-| **Inventory Webhook URL** | Receives `inventoryMovement`. It only sends while the orders webhook is on. |
-| **Custom Headers** | Static headers added to every webhook request, for example an API key for your endpoint. |
-| **Test** | Sends a test request. It passes when your URL answers `200`. |
-| **Webhook Shared Secret** | The key to verify the signature. Click **View secret** to copy it. |
-| **Regenerate webhook shared secret** | Invalidates the current secret. Update it in your system after saving. |
+| Orders | `orderUpdated`, `orderFulfilled`, `shippingUpdated` |
+| Inventory | `inventoryMovement`. It only sends while the orders webhook is on. |
+| Inventory replenishments | `replenishmentCreated`, `replenishmentScheduled`, `replenishmentStatus` |
 
-URLs must use HTTPS and a domain name; IP addresses are rejected. The card shows whether each webhook is working
-and when the last delivery succeeded.
+<Frame>
+  <img src="/images/setup/configure-webhooks.png" alt="Configure Webhooks screen with orders, inventory and inventory replenishment toggles and the shared secret" />
+</Frame>
 
-<Note>
-Replenishment events are not configurable in the app yet. Ask your Cubbo contact to enable them.
-</Note>
+On the same screen:
+
+- **Custom Headers** adds static headers to every webhook request, for example an API key for your endpoint.
+- **Test** sends a test request. It passes when your URL answers `200`.
+- **Webhook Shared Secret** is the key to verify the signature. Click **View secret** to copy it.
+- **Regenerate webhook shared secret** invalidates the current secret. Update it in your system after saving.
+
+URLs must use HTTPS and a domain name; IP addresses are rejected. The integration card shows whether each webhook
+is working and when the last delivery succeeded.
 
 See [Webhooks](/guides/webhooks) for events, payloads and signature verification.
 
