@@ -1,0 +1,171 @@
+---
+title: "Webhooks"
+description: "Recibe notificaciones HTTPS firmadas cuando cambian órdenes, envíos, inventario y reabastecimientos."
+---
+
+Cubbo envía un `POST` por HTTPS a tu endpoint cuando algo cambia en tu cuenta. Usa webhooks en lugar
+de consultar periódicamente los endpoints de listado.
+
+## Eventos
+
+| Evento | Feed | Cuándo se envía |
+|---|---|---|
+| `orderUpdated` | Órdenes | La orden se crea o cambia de estado: procesamiento, pausa y reanudación, surtido, cancelación, devoluciones. |
+| `orderFulfilled` | Órdenes | Se generan las guías de envío y la orden sale del almacén. |
+| `shippingUpdated` | Órdenes | La paquetería reporta un nuevo estado de rastreo para un paquete. Las órdenes con varios paquetes envían un evento por paquete. |
+| `inventoryMovement` | Inventario | Cambia el stock disponible de uno o más productos. El payload es una foto del stock actual, no una diferencia. |
+| `replenishmentCreated` | Reabastecimientos | Se crea un reabastecimiento (replenishment). |
+| `replenishmentScheduled` | Reabastecimientos | Se agenda o se cancela una cita de recepción para un reabastecimiento. |
+| `replenishmentStatus` | Reabastecimientos | Un reabastecimiento pasa a procesamiento, acomodo, completado o cancelado. |
+
+El nombre del evento viaja en el header `X-Webhook-Event`. Enruta con base en ese header, no en la URL. El payload completo
+de cada evento está en la referencia de la API, en **Webhooks**.
+
+<Note>
+`shippingUpdated` no incluye el `id` de la orden de Cubbo. Relaciónalo con `order_number` y `store_id`.
+</Note>
+
+## Configura tu endpoint
+
+Tu endpoint debe usar `https` y un nombre de dominio. Las direcciones IP se rechazan.
+
+Puedes configurarlo de dos formas:
+
+- Cuando creas una tienda con `POST /v1/stores`, envía `webhook_consumer_url` y, opcionalmente, `webhook_feeds`
+  (`order_status`, `inventory_movement`, `replenishment_status`). Los tres feeds se activan cuando lo
+  omites. La respuesta incluye `webhook_consumer_secret` una sola vez. Guárdalo de forma segura: Cubbo no lo vuelve a mostrar.
+- Pídeselo a tu contacto de Cubbo. Cubbo puede configurar una URL distinta por feed, agregar headers estáticos como una API key, renovar
+  el secret o autenticarse con tu endpoint mediante credenciales de cliente OAuth.
+
+El feed de inventario solo envía mientras el feed de órdenes esté activo. El feed de reabastecimientos es independiente.
+
+### Prueba de conectividad
+
+Cuando Cubbo verifica tu URL, envía este cuerpo, sin headers de firma y sin `X-Webhook-Event`:
+
+```json
+{ "test": "cubbo_open_api_integration" }
+```
+
+Responde `2xx` en menos de 10 segundos. Acepta este ping aunque no esté firmado, o la verificación falla.
+
+## Headers
+
+| Header | Valor |
+|---|---|
+| `Content-Type` | `application/json` |
+| `X-Webhook-Event` | El nombre del evento. |
+| `X-Cubbo-Webhook-Message-Id` | UUID de este intento de entrega. Cambia en cada reintento. |
+| `isa` | Hora de emisión, en segundos Unix. |
+| `exp` | Hora de expiración, en segundos Unix. Siempre es `isa` más 300. |
+| `X-Cubbo-Hmac-SHA256` | Firma, 64 caracteres hexadecimales en minúsculas. |
+| `X-Cubbo-Idempotency-Key` | Llave estable para deduplicar. Se envía en `shippingUpdated`, `inventoryMovement` y en los eventos de reabastecimiento. |
+| `Authorization` | `Bearer <token>`, solo cuando OAuth está configurado para tu endpoint. |
+
+También se agregan los headers estáticos configurados para tu integración.
+
+## Verifica la firma
+
+Cada evento se firma con HMAC-SHA256 usando el secret de tu webhook. Verifícalo antes de confiar en el cuerpo.
+
+<Steps>
+  <Step title="Lee el cuerpo sin procesar">
+    Usa exactamente los bytes que recibiste. No parsees ni vuelvas a serializar el JSON: el orden de las llaves y los espacios deben coincidir.
+  </Step>
+  <Step title="Arma la cadena firmada">
+    Une cuatro valores con un punto literal: el ID del mensaje, `isa`, `exp` y el cuerpo sin procesar.
+
+    ```text
+    <X-Cubbo-Webhook-Message-Id>.<isa>.<exp>.<raw body>
+    ```
+  </Step>
+  <Step title="Calcula y compara">
+    Calcula el HMAC-SHA256 de esa cadena. Usa el secret como una cadena UTF-8 simple, sin decodificarlo.
+    Compara el digest hexadecimal en minúsculas con `X-Cubbo-Hmac-SHA256` en tiempo constante.
+  </Step>
+  <Step title="Revisa la expiración">
+    Rechaza la solicitud si la hora actual ya pasó `exp`. Permite algunos segundos de desfase de reloj.
+  </Step>
+</Steps>
+
+<CodeGroup>
+```js Node.js
+const crypto = require("crypto");
+
+function verifyCubboWebhook(rawBody, headers, secret) {
+  const msgId = headers["x-cubbo-webhook-message-id"];
+  const isa = headers["isa"];
+  const exp = headers["exp"];
+  const given = headers["x-cubbo-hmac-sha256"] || "";
+
+  if (Math.floor(Date.now() / 1000) > Number(exp) + 30) return false;
+
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(`${msgId}.${isa}.${exp}.${rawBody}`, "utf8")
+    .digest("hex");
+
+  return given.length === expected.length &&
+    crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(given));
+}
+```
+
+```python Python
+import hashlib, hmac, time
+
+def verify_cubbo_webhook(raw_body: bytes, headers, secret: str) -> bool:
+    msg_id = headers["X-Cubbo-Webhook-Message-Id"]
+    isa = headers["isa"]
+    exp = headers["exp"]
+    given = headers.get("X-Cubbo-Hmac-SHA256", "")
+
+    if time.time() > int(exp) + 30:
+        return False
+
+    signed = f"{msg_id}.{isa}.{exp}.".encode() + raw_body
+    expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, given)
+```
+</CodeGroup>
+
+Todos los feeds de una integración usan el mismo secret. Cuando Cubbo lo renueva, el nuevo secret aplica a todas
+las entregas a partir de ese momento, incluidos los reintentos de eventos anteriores.
+
+## Respuesta y reintentos
+
+Responde con cualquier estado `2xx` en cuanto hayas guardado el evento y luego procésalo de forma asíncrona. Las respuestas
+lentas corren el riesgo de un timeout y un reintento.
+
+| Tu respuesta | Qué hace Cubbo |
+|---|---|
+| `2xx` | Marca el evento como entregado. |
+| `429`, `5xx`, timeout o error de red | Reintenta con backoff exponencial. |
+| Cualquier otro `4xx` | No reintenta. El evento no se vuelve a enviar. |
+
+| Feed | Reintentos | Ventana de reintentos |
+|---|---|---|
+| Órdenes | Hasta 14 | Aproximadamente 26 horas |
+| Inventario y reabastecimientos | Hasta 5 | Aproximadamente 10 minutos |
+
+Los eventos de inventario y de reabastecimiento se entregan de uno en uno por integración, en orden. Una entrega que falla
+retiene los eventos que vienen detrás hasta que tiene éxito o se agotan sus reintentos.
+
+<Warning>
+No respondas `400` ni `401` mientras tu endpoint se está desplegando o está mal configurado. Cubbo los trata como
+definitivos y descarta el evento. Responde `503` en su lugar para que el evento se reintente.
+</Warning>
+
+## Maneja los duplicados
+
+Los reintentos reenvían el mismo cuerpo, pero con un nuevo ID de mensaje, `isa`, `exp` y firma. Nunca dedupliques con base en
+`X-Cubbo-Webhook-Message-Id`.
+
+| Evento | Deduplica con base en |
+|---|---|
+| `orderUpdated`, `orderFulfilled` | `id`, `status` y `updated_at` en conjunto. |
+| `shippingUpdated` | `X-Cubbo-Idempotency-Key`. Cuando no viene, usa `order_number` y `status`. |
+| `inventoryMovement` | `X-Cubbo-Idempotency-Key`. Además, omite cualquier evento cuyo `sequence` no sea mayor que el último que procesaste para esa tienda. |
+| `replenishmentCreated`, `replenishmentScheduled`, `replenishmentStatus` | `X-Cubbo-Idempotency-Key`. |
+
+Conserva las llaves procesadas durante al menos 26 horas, la ventana de reintentos más larga. Los valores de `sequence` crecen, pero pueden saltarse
+números, así que no esperes que aumenten de uno en uno.

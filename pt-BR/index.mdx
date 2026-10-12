@@ -1,0 +1,70 @@
+---
+title: "Introdução"
+description: "Integre sua loja, ERP ou marketplace à rede de fulfillment da Cubbo por meio da Clients API."
+---
+
+A Clients API da Cubbo permite que você conecte seus próprios sistemas à operação de fulfillment da Cubbo. Você envia pedidos,
+mantém seu catálogo e estoque sincronizados, anuncia remessas de entrada, os recebimentos (replenishment), gerencia devoluções e recebe
+webhooks quando algo muda no armazém ou durante a entrega.
+
+A API é uma API REST JSON com dois ambientes:
+
+| Ambiente | URL base |
+|---|---|
+| Produção | `https://api.cubbo.com/v1` |
+| Staging | `https://api-staging.cubbo.com/v1` |
+
+O ambiente de staging tem suas próprias credenciais e lojas. Peça ao seu contato na Cubbo uma conta de staging para testar
+sua integração antes de entrar em produção.
+
+Todas as requisições, exceto a criação do token, levam um token `Bearer`. Veja [Autenticação](/pt-BR/guides/authentication).
+
+## O que você pode fazer
+
+<CardGroup cols={2}>
+  <Card title="Pedidos" icon="box" href="/api-reference/orders/create-an-order">
+    Crie pedidos de venda, atualize-os antes da separação, retenha-os ou cancele-os e consulte o status de fulfillment e de entrega.
+  </Card>
+  <Card title="Inventário" icon="warehouse" href="/api-reference/inventory/list-products-with-stock">
+    Crie e atualize produtos, consulte o estoque disponível por armazém e gerencie lotes.
+  </Card>
+  <Card title="Recebimentos" icon="truck-ramp-box" href="/api-reference/replenishments/create-a-replenishment">
+    Anuncie remessas de entrada para o armazém e acompanhe o que foi recebido.
+  </Card>
+  <Card title="Devoluções" icon="rotate-left" href="/api-reference/returns/request-a-return-for-a-shipped-order">
+    Registre uma devolução, acompanhe seu recebimento e decida o que fazer com as unidades devolvidas.
+  </Card>
+  <Card title="Envio" icon="map" href="/api-reference/shipping-methods/list-active-shipping-methods-available-to-a-store">
+    Liste os métodos de envio disponíveis para uma loja, verifique a cobertura por CEP e cote um envio.
+  </Card>
+  <Card title="Webhooks" icon="bolt" href="/pt-BR/guides/webhooks">
+    Receba notificações HTTPS assinadas para eventos de pedidos, envios, inventário e recebimentos.
+  </Card>
+</CardGroup>
+
+## Antes de começar
+
+<Steps>
+  <Step title="Obtenha as credenciais da API">
+    A Cubbo emite um `client_id` e um `client_secret` por conta de API. Peça ao seu contato na Cubbo caso você não os tenha.
+  </Step>
+  <Step title="Troque-as por um token">
+    Chame `POST /v1/auth/token` e use o token retornado como token `Bearer` em todas as outras requisições.
+  </Step>
+  <Step title="Saiba o ID da sua loja">
+    A maioria dos endpoints recebe um `store_id`. Uma conta de API pode ter acesso a várias lojas; a API só
+    responde pelas lojas que ela tem permissão para ver.
+  </Step>
+</Steps>
+
+<Card title="Início rápido" icon="rocket" href="/pt-BR/quickstart">
+  Crie seu primeiro pedido em cinco minutos.
+</Card>
+
+## Convenções
+
+- Os corpos de requisição e resposta são JSON (`Content-Type: application/json`).
+- Datas e horários são strings ISO 8601 em UTC, a menos que o campo indique o contrário.
+- Campos monetários são decimais na moeda da loja.
+- Identificadores (`id`, `store_id`, `order_id`) são inteiros. `order_number` é a sua própria referência e é uma string.
+- Os erros sempre retornam como um objeto JSON com uma chave `error`. Veja [Erros](/pt-BR/guides/errors).
