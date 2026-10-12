@@ -7,15 +7,14 @@ A Clients API da Cubbo permite que você conecte seus próprios sistemas à oper
 mantém seu catálogo e estoque sincronizados, anuncia remessas de entrada, os recebimentos (replenishment), gerencia devoluções e recebe
 webhooks quando algo muda no armazém ou durante a entrega.
 
-A API é uma API REST JSON com dois ambientes:
+A API é uma API REST JSON disponível em:
 
-| Ambiente | URL base |
-|---|---|
-| Produção | `https://api.cubbo.com/v1` |
-| Staging | `https://api-staging.cubbo.com/v1` |
+```text
+https://api.cubbo.com/v1
+```
 
-O ambiente de staging tem suas próprias credenciais e lojas. Peça ao seu contato na Cubbo uma conta de staging para testar
-sua integração antes de entrar em produção.
+Há um único ambiente. Você testa sua integração em produção com uma loja de teste que a Cubbo marca como conta
+de teste e, depois, opera com sua conta de produção. Cada conta tem suas próprias credenciais.
 
 Todas as requisições, exceto a criação do token, levam um token `Bearer`. Veja [Autenticação](/pt-BR/guides/authentication).
 
@@ -45,8 +44,9 @@ Todas as requisições, exceto a criação do token, levam um token `Bearer`. Ve
 ## Antes de começar
 
 <Steps>
-  <Step title="Obtenha as credenciais da API">
-    A Cubbo emite um `client_id` e um `client_secret` por conta de API. Peça ao seu contato na Cubbo caso você não os tenha.
+  <Step title="Peça sua conta de teste">
+    Peça à pessoa que conduz seu onboarding na Cubbo para criar sua conta de teste. Você recebe uma loja de teste
+    com seu próprio `client_id` e `client_secret`. Desenvolva e teste sua integração com ela.
   </Step>
   <Step title="Troque-as por um token">
     Chame `POST /v1/auth/token` e use o token retornado como token `Bearer` em todas as outras requisições.
@@ -54,6 +54,10 @@ Todas as requisições, exceto a criação do token, levam um token `Bearer`. Ve
   <Step title="Saiba o ID da sua loja">
     A maioria dos endpoints recebe um `store_id`. Uma conta de API pode ter acesso a várias lojas; a API só
     responde pelas lojas que ela tem permissão para ver.
+  </Step>
+  <Step title="Passe para sua conta de produção">
+    Quando seus testes funcionarem, peça ao seu contato na Cubbo para criar sua conta de produção. Ela tem
+    credenciais e um `store_id` diferentes. Troque ambos na sua integração para começar a operar.
   </Step>
 </Steps>
 

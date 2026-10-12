@@ -7,15 +7,14 @@ The Cubbo Clients API lets you connect your own systems to Cubbo's fulfillment o
 keep your catalog and stock in sync, announce inbound shipments (replenishments), manage returns and receive
 webhooks when something changes in the warehouse or during delivery.
 
-The API is a JSON REST API with two environments:
+The API is a JSON REST API served at:
 
-| Environment | Base URL |
-|---|---|
-| Production | `https://api.cubbo.com/v1` |
-| Staging | `https://api-staging.cubbo.com/v1` |
+```text
+https://api.cubbo.com/v1
+```
 
-Staging has its own credentials and stores. Ask your Cubbo contact for a staging account to test
-your integration before going live.
+There is one environment. You test your integration in production, with a test store that Cubbo marks as a
+test account, and then you operate with your production account. Each account has its own credentials.
 
 Every request except token creation carries a `Bearer` token. See [Authentication](/guides/authentication).
 
@@ -45,8 +44,9 @@ Every request except token creation carries a `Bearer` token. See [Authenticatio
 ## Before you start
 
 <Steps>
-  <Step title="Get API credentials">
-    Cubbo issues a `client_id` and `client_secret` per API account. Ask your Cubbo contact if you do not have them.
+  <Step title="Ask for your test account">
+    Ask the person leading your Cubbo onboarding to create your test account. You get a test store and its own
+    `client_id` and `client_secret`. Build and test your integration with it.
   </Step>
   <Step title="Exchange them for a token">
     Call `POST /v1/auth/token` and use the returned token as a `Bearer` token on every other request.
@@ -54,6 +54,10 @@ Every request except token creation carries a `Bearer` token. See [Authenticatio
   <Step title="Know your store ID">
     Most endpoints take a `store_id`. One API account can have access to several stores; the API only
     answers for stores it is allowed to see.
+  </Step>
+  <Step title="Move to your production account">
+    When your tests pass, ask your Cubbo onboarding contact to create your production account. It has different
+    credentials and a different `store_id`. Switch both in your integration to start operating.
   </Step>
 </Steps>
 
