@@ -1710,16 +1710,22 @@ components:
         shipping_method_id:
           type: integer
           description: >-
-            Id of a Cubbo shipping method (see `GET /shipping-methods`). Required unless `shipping_line_code`
-            is sent. Coverage for the destination zip code is checked synchronously.
+            Id of a Cubbo shipping method. Get it from `GET /shipping-methods/quote`: each option in the
+            response has a `shipping_method_id`. Required unless `shipping_line_code` is sent. Coverage for
+            the destination zip code is checked synchronously.
           example: 12
         shipping_line_code:
           type: string
           description: >-
-            Name of a shipping configuration of your API integration, used to let Cubbo pick the shipping
-            method by zone. Required unless `shipping_method_id` is sent; ignored when `shipping_method_id` is
-            present. If the configuration exists but no method can be resolved (no coverage, unknown weight or
-            tariff), the order is still created and lands in an error status for Cubbo to resolve.
+            Exact name of a shipping method you created in the Cubbo app, under **Integrations**, your Open
+            API integration, **Shipping Methods** (field **Integration Delivery Method**). It must match
+            character by character: the comparison is case-sensitive and does not trim spaces. Cubbo uses the
+            shipping configuration assigned to that method to pick the carrier. See [Set up your
+            integration](/guides/setup#3-configure-shipping-methods). Required unless `shipping_method_id` is
+            sent; ignored when `shipping_method_id` is present. If no active method has that name, Cubbo falls
+            back to the integration's default shipping method when one exists. If the method exists but no
+            carrier can be resolved (no coverage, unknown weight or tariff), the order is still created and
+            lands in an error status for Cubbo to resolve.
           example: Express
         is_paid:
           type: boolean
@@ -2093,15 +2099,21 @@ components:
         shipping_method_id:
           type: integer
           description: >-
-            Id of a Cubbo shipping method. Exactly one of `shipping_method_id` or
+            Id of a Cubbo shipping method. Get it from `GET /shipping-methods/quote`: each option in the
+            response has a `shipping_method_id`. Exactly one of `shipping_method_id` or
             `integration_shipping_method` must be sent. Coverage for the destination is validated through the
             order validation (`errors` response).
           example: 12
         integration_shipping_method:
           type: string
           description: >-
-            Name of a shipping configuration of your API integration; Cubbo resolves the shipping method from
-            it. Exactly one of `shipping_method_id` or `integration_shipping_method` must be sent.
+            Exact name of a shipping method you created in the Cubbo app, under **Integrations**, your Open
+            API integration, **Shipping Methods** (field **Integration Delivery Method**). It must match
+            character by character: the comparison is case-sensitive and does not trim spaces. Cubbo uses the
+            shipping configuration assigned to that method to pick the carrier. See [Set up your
+            integration](/guides/setup#3-configure-shipping-methods). Exactly one of `shipping_method_id` or
+            `integration_shipping_method` must be sent. There is no fallback here: an unknown name returns 422
+            `MISSING_INTEGRATION_SHIPPING_METHOD`.
           example: Express
         shipping:
           $ref: "#/components/schemas/CreateAndShipShippingAddress"
@@ -2323,13 +2335,18 @@ components:
         shipping_method_id:
           type: integer
           description: >-
-            Id of a Cubbo shipping method. For `SALE`/`DONATION` one of `shipping_method_id` or
+            Id of a Cubbo shipping method. Get it from `GET /shipping-methods/quote`: each option in the
+            response has a `shipping_method_id`. For `SALE`/`DONATION` one of `shipping_method_id` or
             `shipping_line_code` is required; ignored for removal types.
           example: 12
         shipping_line_code:
           type: string
           description: >-
-            Name of a shipping configuration of your API integration; alternative to `shipping_method_id`.
+            Exact name of a shipping method you created in the Cubbo app, under **Integrations**, your Open
+            API integration, **Shipping Methods** (field **Integration Delivery Method**). It must match
+            character by character: the comparison is case-sensitive and does not trim spaces. Cubbo uses the
+            shipping configuration assigned to that method to pick the carrier. See [Set up your
+            integration](/guides/setup#3-configure-shipping-methods). Alternative to `shipping_method_id`.
             Ignored for removal types.
           example: Express
         is_paid:
@@ -4180,7 +4197,8 @@ components:
             - integer
             - "null"
           description: >-
-            Id of the shipping method to assign. It must be active and cover the (updated) shipping address;
+            Id of the shipping method to assign. Get it from `GET /shipping-methods/quote`
+            (`shipping_method_id` of each option). It must be active and cover the (updated) shipping address;
             an international method is refused for a destination inside the warehouse's country.
           example: 77
         is_b2b:
@@ -9814,8 +9832,13 @@ paths:
         United States, and queues it for processing. Use it for every non-Brazil store; a store
         served from a Brazil warehouse is refused and must use `POST /brazil/orders`. The request
         needs a store, a unique `order_number` per store, a recipient address, at least one product
-        line and a way to pick the carrier: either a Cubbo `shipping_method_id` or a
-        `shipping_line_code` that matches a shipping configuration of your integration.
+        line and a way to pick the carrier:
+
+        - `shipping_line_code`: the exact name of a shipping method you created in the Cubbo app
+          (**Integrations** > Open API > **Shipping Methods**). Cubbo picks the carrier with the
+          configuration assigned to it.
+        - `shipping_method_id`: a specific Cubbo shipping method, taken from the `shipping_method_id` of
+          an option returned by `GET /shipping-methods/quote`.
 
         - The order is returned immediately in its initial status. Address, coverage, stock and
           carrier validations run asynchronously; poll `GET /orders` and read `status`,
@@ -15233,6 +15256,10 @@ paths:
         Returns the shipping options (carrier, delivery type, estimated delivery and price) that
         the store's shipping configuration would offer for a package going to the given zip code.
         Use it to show shipping choices at checkout. Mexico and Brazil destinations only.
+
+        To create an order with a specific shipping method, send the `shipping_method_id` of the option
+        you choose as `shipping_method_id` in `POST /orders`, `POST /orders/create-and-ship` or
+        `POST /brazil/orders`.
 
         - The shipping configuration is chosen from the store's product shipping rules when
           `sku` matches one; otherwise the default configuration of the store's Open API
