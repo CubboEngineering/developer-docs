@@ -45,8 +45,13 @@ Todas las solicitudes, excepto la creación del token, llevan un token `Bearer`.
 
 <Steps>
   <Step title="Pide tu cuenta de prueba">
-    Pide a la persona que te da la introducción a Cubbo que cree tu cuenta de prueba. Recibes una tienda de prueba
-    con su propio `client_id` y `client_secret`. Construye y prueba tu integración con ella.
+    Pide a la persona que te da la introducción a Cubbo que cree tu cuenta de prueba. Recibes acceso a la app de
+    Cubbo con una tienda de prueba.
+  </Step>
+  <Step title="Configura la integración en la app">
+    En la app de Cubbo, abre **Integraciones**, crea una integración **Open API** y copia tu `client_id` y tu
+    `client_secret`. Después configura tus métodos de envío y tus webhooks. Consulta
+    [Configura tu integración](/es/guides/setup).
   </Step>
   <Step title="Cámbialas por un token">
     Llama a `POST /v1/auth/token` y usa el token que recibes como token `Bearer` en todas las demás solicitudes.
@@ -56,8 +61,9 @@ Todas las solicitudes, excepto la creación del token, llevan un token `Bearer`.
     responde por las tiendas que tiene permitido ver.
   </Step>
   <Step title="Pasa a tu cuenta de producción">
-    Cuando tus pruebas funcionen, pide a tu contacto de Cubbo que cree tu cuenta de producción. Tiene credenciales
-    y un `store_id` distintos. Cámbialos en tu integración para empezar a operar.
+    Cuando tus pruebas funcionen, pide a tu contacto de Cubbo que cree tu cuenta de producción. Configura ahí
+    también la integración: tiene credenciales y un `store_id` distintos. Cámbialos en tu integración para empezar
+    a operar.
   </Step>
 </Steps>
 

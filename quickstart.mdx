@@ -7,8 +7,10 @@ This walkthrough takes you from credentials to a created order.
 
 ## Prerequisites
 
-- The `client_id` and `client_secret` of your test account. Ask the person leading your Cubbo onboarding to create it.
-- The `store_id` of your test store. It comes with the test account.
+- A test account. Ask the person leading your Cubbo onboarding to create it.
+- The `client_id` and `client_secret` of an Open API integration created in the Cubbo app. See [Set up your integration](/guides/setup).
+- The `store_id` of your test store.
+- At least one shipping method mapped in the integration. Its name is the `shipping_line_code` you send with the order.
 - A product already created in that store, so the order can reference its `sku`.
 
 ## Steps
@@ -55,6 +57,7 @@ This walkthrough takes you from credentials to a created order.
       -d '{
         "store_id": 1234,
         "order_number": "ORD-0001",
+        "shipping_line_code": "standard",
         "shipping": {
           "first_name": "Ana",
           "last_name": "Pérez",

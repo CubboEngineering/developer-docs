@@ -26,6 +26,7 @@
                 "group": "Getting started",
                 "pages": [
                   "index",
+                  "guides/setup",
                   "quickstart",
                   "guides/authentication"
                 ]
@@ -62,6 +63,7 @@
                 "group": "Primeros pasos",
                 "pages": [
                   "es/index",
+                  "es/guides/setup",
                   "es/quickstart",
                   "es/guides/authentication"
                 ]
@@ -111,6 +113,7 @@
                 "group": "Primeiros passos",
                 "pages": [
                   "pt-BR/index",
+                  "pt-BR/guides/setup",
                   "pt-BR/quickstart",
                   "pt-BR/guides/authentication"
                 ]

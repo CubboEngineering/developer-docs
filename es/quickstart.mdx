@@ -7,8 +7,10 @@ Esta guía te lleva desde las credenciales hasta una orden creada.
 
 ## Requisitos previos
 
-- El `client_id` y el `client_secret` de tu cuenta de prueba. Pide a la persona que te da la introducción a Cubbo que la cree.
-- El `store_id` de tu tienda de prueba. Viene con la cuenta de prueba.
+- Una cuenta de prueba. Pide a la persona que te da la introducción a Cubbo que la cree.
+- El `client_id` y el `client_secret` de una integración Open API creada en la app de Cubbo. Consulta [Configura tu integración](/es/guides/setup).
+- El `store_id` de tu tienda de prueba.
+- Al menos un método de envío configurado en la integración. Su nombre es el `shipping_line_code` que envías con la orden.
 - Un producto ya creado en esa tienda, para que la orden pueda hacer referencia a su `sku`.
 
 ## Pasos
@@ -55,6 +57,7 @@ Esta guía te lleva desde las credenciales hasta una orden creada.
       -d '{
         "store_id": 1234,
         "order_number": "ORD-0001",
+        "shipping_line_code": "standard",
         "shipping": {
           "first_name": "Ana",
           "last_name": "Pérez",

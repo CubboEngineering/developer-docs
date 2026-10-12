@@ -7,8 +7,10 @@ Este passo a passo leva você das credenciais até um pedido criado.
 
 ## Pré-requisitos
 
-- O `client_id` e o `client_secret` da sua conta de teste. Peça à pessoa que conduz seu onboarding na Cubbo para criá-la.
-- O `store_id` da sua loja de teste. Ele vem com a conta de teste.
+- Uma conta de teste. Peça à pessoa que conduz seu onboarding na Cubbo para criá-la.
+- O `client_id` e o `client_secret` de uma integração Open API criada no app da Cubbo. Veja [Configure sua integração](/pt-BR/guides/setup).
+- O `store_id` da sua loja de teste.
+- Pelo menos uma modalidade de envio configurada na integração. O nome dela é o `shipping_line_code` que você envia com o pedido.
 - Um produto já criado nessa loja, para que o pedido possa referenciar seu `sku`.
 
 ## Passos
@@ -55,6 +57,7 @@ Este passo a passo leva você das credenciais até um pedido criado.
       -d '{
         "store_id": 1234,
         "order_number": "ORD-0001",
+        "shipping_line_code": "standard",
         "shipping": {
           "first_name": "Ana",
           "last_name": "Pérez",

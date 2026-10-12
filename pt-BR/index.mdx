@@ -45,8 +45,13 @@ Todas as requisições, exceto a criação do token, levam um token `Bearer`. Ve
 
 <Steps>
   <Step title="Peça sua conta de teste">
-    Peça à pessoa que conduz seu onboarding na Cubbo para criar sua conta de teste. Você recebe uma loja de teste
-    com seu próprio `client_id` e `client_secret`. Desenvolva e teste sua integração com ela.
+    Peça à pessoa que conduz seu onboarding na Cubbo para criar sua conta de teste. Você recebe acesso ao app da
+    Cubbo com uma loja de teste.
+  </Step>
+  <Step title="Configure a integração no app">
+    No app da Cubbo, abra **Integrações**, crie uma integração **Open API** e copie seu `client_id` e seu
+    `client_secret`. Depois configure suas modalidades de envio e seus webhooks. Veja
+    [Configure sua integração](/pt-BR/guides/setup).
   </Step>
   <Step title="Troque-as por um token">
     Chame `POST /v1/auth/token` e use o token retornado como token `Bearer` em todas as outras requisições.
@@ -56,8 +61,9 @@ Todas as requisições, exceto a criação do token, levam um token `Bearer`. Ve
     responde pelas lojas que ela tem permissão para ver.
   </Step>
   <Step title="Passe para sua conta de produção">
-    Quando seus testes funcionarem, peça ao seu contato na Cubbo para criar sua conta de produção. Ela tem
-    credenciais e um `store_id` diferentes. Troque ambos na sua integração para começar a operar.
+    Quando seus testes funcionarem, peça ao seu contato na Cubbo para criar sua conta de produção. Configure a
+    integração nela também: ela tem credenciais e um `store_id` diferentes. Troque ambos na sua integração para
+    começar a operar.
   </Step>
 </Steps>
 

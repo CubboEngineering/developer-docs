@@ -1,0 +1,125 @@
+---
+title: "Set up your integration"
+description: "Generate your API credentials, map your shipping methods and configure webhooks in the Cubbo app."
+---
+
+You set up the integration yourself in the Cubbo app at [app.cubbo.com](https://app.cubbo.com/stores). Do it first
+with your test account, and repeat it with your production account when you are ready to operate. Each account
+gets its own credentials.
+
+<Note>
+The screenshots show the app in Spanish. The app is also available in English and Portuguese; switch the language
+from the selector next to your profile.
+</Note>
+
+## 1. Create the Open API integration
+
+<Steps>
+  <Step title="Open Integrations">
+    In the top menu, open **Integrations** and click **Create Integration**. Choose **Open API**.
+  </Step>
+  <Step title="Fill in the form">
+    **Webhook URL** is optional. If you set it, it must be HTTPS, and Cubbo sends a test `POST` to check that it
+    answers. **Note** is an optional label for your team. Click **Create Integration**.
+
+    <Frame>
+      <img src="/images/setup/open-api-form.png" alt="Configure Open API Integration form with webhook URL and note fields" />
+    </Frame>
+  </Step>
+  <Step title="Save your credentials">
+    The app shows your `client_id` and `client_secret`, and the stores those credentials can access. Copy both
+    now and store them securely.
+  </Step>
+</Steps>
+
+<Warning>
+The `client_secret` is shown only once. If you lose it, you must regenerate the credentials, and the old ones
+stop working immediately.
+</Warning>
+
+Use these credentials with `POST /v1/auth/token`. See [Authentication](/guides/authentication).
+
+## 2. Manage the integration
+
+Your Open API integration appears in **Integrations** as a card. From it you can:
+
+- **Activate or deactivate** the integration with the toggle. While it is deactivated, Cubbo does not process any
+  creation or update coming from it.
+- Open **Shipping Methods** to map your shipping methods. The badge says whether they are configured.
+- Open **Configure Webhooks** to set where Cubbo sends events. The badge says whether webhooks are configured or
+  failing.
+- **Regenerate Credentials** when a secret is lost or exposed. The current credentials stop working immediately.
+
+<Frame>
+  <img src="/images/setup/integration-card.png" alt="Open API integration card with shipping methods, webhooks and regenerate credentials" />
+</Frame>
+
+## 3. Configure shipping methods
+
+Each order you create must say how it ships. You do that with `shipping_line_code` in `POST /v1/orders`: its value
+is the name of a shipping method of your integration. Cubbo then picks the carrier with the shipping configuration
+assigned to that method.
+
+<Frame>
+  <img src="/images/setup/shipping-methods.png" alt="Shipping methods page of the integration with pickup points toggle" />
+</Frame>
+
+<Steps>
+  <Step title="Create a shipping configuration">
+    Click **Create shipping configuration**. Give it a name, choose the **Destination type** (national,
+    international or pickup), the carriers it can use and a **Delivery preference**: best price picks the cheapest
+    carrier, best service picks the fastest delivery at the best price.
+  </Step>
+  <Step title="Add your shipping methods">
+    Click **Create shipping method**. In **Integration Delivery Method**, type the exact name you will send as
+    `shipping_line_code`, for example `standard` or `express`. Pick its **Type of Shipping Method**:
+
+    | Type | Use it for |
+    |---|---|
+    | National | Shipping within the country. |
+    | International | Shipping to other countries. |
+    | Cash on Delivery | National shipping paid on delivery. |
+    | Pickup | External shipping with your own label. |
+
+    <Frame>
+      <img src="/images/setup/add-shipping-method.png" alt="Add Shipping Method dialog with integration method name and type" />
+    </Frame>
+  </Step>
+  <Step title="Assign a configuration to each method">
+    In the shipping methods list, assign one of your shipping configurations to each method. Cubbo uses it to
+    select the best carrier automatically.
+  </Step>
+</Steps>
+
+<Tip>
+Turn on **Pickup Points** on the same page if you offer click and collect. See the Click and collect endpoints in
+the API reference.
+</Tip>
+
+## 4. Configure webhooks
+
+Click **Configure Webhooks** on the integration card.
+
+| Setting | What it does |
+|---|---|
+| **Orders Webhook URL** | Receives `orderUpdated`, `orderFulfilled` and `shippingUpdated`. |
+| **Inventory Webhook URL** | Receives `inventoryMovement`. It only sends while the orders webhook is on. |
+| **Custom Headers** | Static headers added to every webhook request, for example an API key for your endpoint. |
+| **Test** | Sends a test request. It passes when your URL answers `200`. |
+| **Webhook Shared Secret** | The key to verify the signature. Click **View secret** to copy it. |
+| **Regenerate webhook shared secret** | Invalidates the current secret. Update it in your system after saving. |
+
+URLs must use HTTPS and a domain name; IP addresses are rejected. The card shows whether each webhook is working
+and when the last delivery succeeded.
+
+<Note>
+Replenishment events are not configurable in the app yet. Ask your Cubbo contact to enable them.
+</Note>
+
+See [Webhooks](/guides/webhooks) for events, payloads and signature verification.
+
+## 5. Move to production
+
+When your tests with the test account pass, ask the person leading your Cubbo onboarding to create your production
+account. Repeat these steps there: you get new credentials, a new `store_id`, and you configure shipping methods
+and webhooks again.

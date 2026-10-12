@@ -45,8 +45,13 @@ Every request except token creation carries a `Bearer` token. See [Authenticatio
 
 <Steps>
   <Step title="Ask for your test account">
-    Ask the person leading your Cubbo onboarding to create your test account. You get a test store and its own
-    `client_id` and `client_secret`. Build and test your integration with it.
+    Ask the person leading your Cubbo onboarding to create your test account. You get access to the Cubbo app with
+    a test store.
+  </Step>
+  <Step title="Set up the integration in the app">
+    In the Cubbo app, open **Integrations**, create an **Open API** integration and copy your `client_id` and
+    `client_secret`. Then map your shipping methods and configure webhooks. See
+    [Set up your integration](/guides/setup).
   </Step>
   <Step title="Exchange them for a token">
     Call `POST /v1/auth/token` and use the returned token as a `Bearer` token on every other request.
@@ -56,8 +61,9 @@ Every request except token creation carries a `Bearer` token. See [Authenticatio
     answers for stores it is allowed to see.
   </Step>
   <Step title="Move to your production account">
-    When your tests pass, ask your Cubbo onboarding contact to create your production account. It has different
-    credentials and a different `store_id`. Switch both in your integration to start operating.
+    When your tests pass, ask your Cubbo onboarding contact to create your production account. Set up the
+    integration there too: it has different credentials and a different `store_id`. Switch both in your
+    integration to start operating.
   </Step>
 </Steps>
 
