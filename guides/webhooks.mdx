@@ -1,0 +1,174 @@
+---
+title: "Webhooks"
+description: "Receive signed HTTPS notifications when orders, shipments, inventory and replenishments change."
+---
+
+Cubbo sends an HTTPS `POST` to your endpoint when something changes on your account. Use webhooks instead
+of polling list endpoints.
+
+## Events
+
+| Event | Feed | When it is sent |
+|---|---|---|
+| `orderUpdated` | Orders | The order is created or changes status: processing, hold and unhold, picking, cancelation, returns. |
+| `orderFulfilled` | Orders | Labels are generated and the order leaves the warehouse. |
+| `shippingUpdated` | Orders | The carrier reports a new tracking status for a package. Multi-package orders send one event per package. |
+| `inventoryMovement` | Inventory | Available stock changes for one or more products. The payload is a snapshot of current stock, not a delta. |
+| `replenishmentCreated` | Replenishments | A replenishment is created. |
+| `replenishmentScheduled` | Replenishments | A receiving appointment for a replenishment is booked or canceled. |
+| `replenishmentStatus` | Replenishments | A replenishment moves to processing, putaway, completed or canceled. |
+
+The event name travels in the `X-Webhook-Event` header. Route on that header, not on the URL. The full payload
+of each event is in the API reference under **Webhooks**.
+
+<Note>
+`shippingUpdated` does not include the Cubbo order `id`. Correlate it with `order_number` and `store_id`.
+</Note>
+
+## Set up your endpoint
+
+Your endpoint must use `https` and a domain name. IP addresses are rejected.
+
+You can set it in two ways:
+
+- When you create a store with `POST /v1/stores`, send `webhook_consumer_url` and, optionally, `webhook_feeds`
+  (`order_status`, `inventory_movement`, `replenishment_status`). All three feeds are enabled when you omit
+  it. The response includes `webhook_consumer_secret` once. Store it safely: Cubbo does not show it again.
+- Ask your Cubbo contact. Cubbo can set a different URL per feed, add static headers such as an API key, renew
+  the secret, or authenticate to your endpoint with OAuth client credentials.
+
+The inventory feed only sends while the orders feed is enabled. The replenishments feed is independent.
+
+### Connectivity test
+
+When Cubbo checks your URL it sends this body, without signature headers and without `X-Webhook-Event`:
+
+```json
+{ "test": "cubbo_open_api_integration" }
+```
+
+Answer `2xx` within 10 seconds. Accept this ping even though it is unsigned, or the check fails.
+
+To test the orders feed end to end, call `POST /v1/stores/{id}/fulfillment-test`. Cubbo sends a sample
+`orderFulfilled` event with a reduced payload.
+
+## Headers
+
+| Header | Value |
+|---|---|
+| `Content-Type` | `application/json` |
+| `X-Webhook-Event` | The event name. |
+| `X-Cubbo-Webhook-Message-Id` | UUID of this delivery attempt. It changes on every retry. |
+| `isa` | Issued-at time, Unix seconds. |
+| `exp` | Expiration time, Unix seconds. Always `isa` plus 300. |
+| `X-Cubbo-Hmac-SHA256` | Signature, 64 lowercase hex characters. |
+| `X-Cubbo-Idempotency-Key` | Stable key for deduplication. Sent on `shippingUpdated`, `inventoryMovement` and replenishment events. |
+| `Authorization` | `Bearer <token>`, only when OAuth is configured for your endpoint. |
+
+Static headers configured for your integration are added as well.
+
+## Verify the signature
+
+Every event is signed with HMAC-SHA256 using your webhook secret. Verify it before you trust the body.
+
+<Steps>
+  <Step title="Read the raw body">
+    Use the exact bytes you received. Do not parse and re-serialize the JSON: key order and spacing must match.
+  </Step>
+  <Step title="Build the signed string">
+    Join four values with a literal dot: message ID, `isa`, `exp` and the raw body.
+
+    ```text
+    <X-Cubbo-Webhook-Message-Id>.<isa>.<exp>.<raw body>
+    ```
+  </Step>
+  <Step title="Compute and compare">
+    Compute the HMAC-SHA256 of that string. Use the secret as a plain UTF-8 string, without decoding it.
+    Compare the lowercase hex digest with `X-Cubbo-Hmac-SHA256` in constant time.
+  </Step>
+  <Step title="Check expiration">
+    Reject the request if the current time is past `exp`. Allow a few seconds of clock skew.
+  </Step>
+</Steps>
+
+<CodeGroup>
+```js Node.js
+const crypto = require("crypto");
+
+function verifyCubboWebhook(rawBody, headers, secret) {
+  const msgId = headers["x-cubbo-webhook-message-id"];
+  const isa = headers["isa"];
+  const exp = headers["exp"];
+  const given = headers["x-cubbo-hmac-sha256"] || "";
+
+  if (Math.floor(Date.now() / 1000) > Number(exp) + 30) return false;
+
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(`${msgId}.${isa}.${exp}.${rawBody}`, "utf8")
+    .digest("hex");
+
+  return given.length === expected.length &&
+    crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(given));
+}
+```
+
+```python Python
+import hashlib, hmac, time
+
+def verify_cubbo_webhook(raw_body: bytes, headers, secret: str) -> bool:
+    msg_id = headers["X-Cubbo-Webhook-Message-Id"]
+    isa = headers["isa"]
+    exp = headers["exp"]
+    given = headers.get("X-Cubbo-Hmac-SHA256", "")
+
+    if time.time() > int(exp) + 30:
+        return False
+
+    signed = f"{msg_id}.{isa}.{exp}.".encode() + raw_body
+    expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, given)
+```
+</CodeGroup>
+
+All feeds of one integration use the same secret. When Cubbo renews it, the new secret applies to every
+delivery from that moment, including retries of older events.
+
+## Respond and retry
+
+Answer with any `2xx` status as soon as you have stored the event, then process it asynchronously. Slow
+responses risk a timeout and a retry.
+
+| Your response | What Cubbo does |
+|---|---|
+| `2xx` | Marks the event as delivered. |
+| `429`, `5xx`, timeout or network error | Retries with exponential backoff. |
+| Any other `4xx` | Does not retry. The event is not sent again. |
+
+| Feed | Retries | Retry window |
+|---|---|---|
+| Orders | Up to 14 | About 26 hours |
+| Inventory and replenishments | Up to 5 | About 10 minutes |
+
+Inventory and replenishment events are delivered one at a time per integration, in order. A failing delivery
+holds back the events behind it until it succeeds or runs out of retries.
+
+<Warning>
+Do not answer `400` or `401` while your endpoint is being deployed or misconfigured. Cubbo treats those as
+final and drops the event. Answer `503` instead so the event is retried.
+</Warning>
+
+## Handle duplicates
+
+Retries resend the same body, but with a new message ID, `isa`, `exp` and signature. Never deduplicate on
+`X-Cubbo-Webhook-Message-Id`.
+
+| Event | Deduplicate on |
+|---|---|
+| `orderUpdated`, `orderFulfilled` | `id`, `status` and `updated_at` together. |
+| `shippingUpdated` | `X-Cubbo-Idempotency-Key`. When it is absent, use `order_number` and `status`. |
+| `inventoryMovement` | `X-Cubbo-Idempotency-Key`. Also skip any event whose `sequence` is not greater than the last one you processed for that store. |
+| `replenishmentCreated`, `replenishmentScheduled`, `replenishmentStatus` | `X-Cubbo-Idempotency-Key`. |
+
+Keep processed keys for at least 26 hours, the longest retry window. `sequence` values grow but can skip
+numbers, so do not expect them to increase by one.

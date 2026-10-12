@@ -1,0 +1,37 @@
+---
+title: "Rate limits"
+description: "Request limits per API account and how throttled requests are answered."
+---
+
+Limits apply per API account (`client_id`), not per IP address, so rotating IPs does not raise them.
+
+| Scope | Limit |
+|---|---|
+| `POST /v1/auth/token` | 60 requests per minute per `client_id` |
+| Every other `/v1/*` endpoint, combined | 600 requests per minute per `client_id` |
+
+A second, per-IP protection applies at the network edge to `POST /v1/auth/token`: more than 30 token requests
+in 30 seconds from one IP address returns `429` with an empty body and blocks that address for 10 minutes.
+
+## Throttled response
+
+When a limit is exceeded the API answers `429` with a `Retry-After` header (seconds) and the usual error body:
+
+```http
+HTTP/1.1 429 Too Many Requests
+Content-Type: application/json
+Retry-After: 60
+
+{ "error": "Too many requests. Please slow down and try again later." }
+```
+
+## Staying under the limit
+
+- Cache the bearer token for its whole lifetime (up to 24 hours). Requesting a token per call is the most common
+  cause of throttling.
+- Use [webhooks](/guides/webhooks) to learn about order, shipping, inventory and replenishment changes instead of
+  polling lists.
+- When you must poll, use the date filters and a `per_page` close to the endpoint's maximum, and spread the
+  calls over the minute.
+- On `429`, wait for `Retry-After` and retry with backoff. Do not retry in a tight loop; the counter keeps
+  growing while you do.

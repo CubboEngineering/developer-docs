@@ -1,47 +1,99 @@
 ---
 title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+description: "Authenticate and create your first order."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+This walkthrough takes you from credentials to a created order.
 
 ## Prerequisites
 
-Before you begin, you must have:
+- A `client_id` and `client_secret` issued by Cubbo.
+- The `store_id` of the store you integrate. Your Cubbo contact can give it to you.
+- A product already created in that store, so the order can reference its `sku`.
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+## Steps
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Get a token">
+    Exchange your credentials for a bearer token. Tokens last up to 24 hours (`expires_in`, in seconds).
+    Cache the token and reuse it until it expires: do not request a new one per call.
 
     ```bash
-    npm install your-package
+    curl -X POST https://api.cubbo.com/v1/auth/token \
+      -H "Content-Type: application/json" \
+      -d '{
+        "client_id": "YOUR_CLIENT_ID",
+        "client_secret": "YOUR_CLIENT_SECRET",
+        "expires_in": 86400
+      }'
+    ```
+
+    ```json
+    {
+      "token": "<token>",
+      "expires_in": 86400,
+      "type": "Bearer"
+    }
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+  <Step title="Check the products exist">
+    List the store's inventory and confirm the SKU you plan to sell.
 
     ```bash
-    your-cli init
+    curl "https://api.cubbo.com/v1/inventory?store_id=1234&sku=SKU-RED-M" \
+      -H "Authorization: Bearer <token>"
     ```
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+  <Step title="Create an order">
+    Send the buyer's shipping address and the products to ship. `order_number` is your own reference and
+    must be unique within the store.
 
     ```bash
-    your-cli start
+    curl -X POST https://api.cubbo.com/v1/orders \
+      -H "Authorization: Bearer <token>" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "store_id": 1234,
+        "order_number": "ORD-0001",
+        "shipping": {
+          "first_name": "Ana",
+          "last_name": "Pérez",
+          "phone": "+525512345678",
+          "email": "buyer@example.com",
+          "address1": "Av. Insurgentes Sur 1000",
+          "number": "1000",
+          "city": "Ciudad de México",
+          "province": "CDMX",
+          "zip_code": "03100",
+          "country": "MX"
+        },
+        "products": [
+          { "sku": "SKU-RED-M", "quantity": 2 }
+        ]
+      }'
     ```
+
+    The response is the created order, including its Cubbo `id` and its `status`.
+  </Step>
+  <Step title="Follow the order">
+    Poll `GET /v1/orders?store_id=1234&order_number=ORD-0001`, or configure a
+    [webhook](/guides/webhooks) and let Cubbo notify you when the order is fulfilled or its shipment changes.
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Next steps
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/guides/authentication">
+    Token lifetime, store access and how unauthorized requests fail.
+  </Card>
+  <Card title="Create an order" icon="box" href="/api-reference/orders/create-an-order">
+    Every field you can send with an order.
+  </Card>
+  <Card title="Errors" icon="triangle-exclamation" href="/guides/errors">
+    Status codes and the error body.
+  </Card>
+  <Card title="Webhooks" icon="bolt" href="/guides/webhooks">
+    Events, payloads and signature verification.
+  </Card>
+</CardGroup>

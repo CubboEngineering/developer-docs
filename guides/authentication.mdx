@@ -1,0 +1,75 @@
+---
+title: "Authentication"
+description: "Exchange your client credentials for a bearer token and send it on every request."
+---
+
+The Clients API uses OAuth-style client credentials. You exchange a `client_id` and `client_secret` for a
+short-lived token and send that token as a `Bearer` token in the `Authorization` header.
+
+## Get a token
+
+```bash
+curl -X POST https://api.cubbo.com/v1/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{ "client_id": "YOUR_CLIENT_ID", "client_secret": "YOUR_CLIENT_SECRET" }'
+```
+
+```json
+{
+  "token": "<token>",
+  "expires_in": 86400,
+  "type": "Bearer"
+}
+```
+
+| Field | Notes |
+|---|---|
+| `client_id`, `client_secret` | Issued by Cubbo per API account. Keep the secret server-side. |
+| `expires_in` | Optional. Token lifetime in seconds, from 10 to 86400 (24 hours). Default 86400. |
+| `grant_type` | Optional. Only `client_credentials` is supported. |
+
+The token is a signed JWT. Its lifetime is fixed when it is issued, so request a new token shortly before
+`expires_in` elapses. Clock differences of up to 30 seconds are tolerated.
+
+<Warning>
+Do not request a token on every API call. Token requests are limited to 60 per minute per `client_id`
+and the token is valid for up to 24 hours. Cache it.
+</Warning>
+
+## Use the token
+
+Send it on every other request:
+
+```bash
+curl https://api.cubbo.com/v1/orders?store_id=1234 \
+  -H "Authorization: Bearer <token>"
+```
+
+The header name is case-insensitive. The scheme must be `Bearer`.
+
+## Store access
+
+An API account is linked to one or more stores. Endpoints that take a `store_id` only answer for stores the
+account can access; asking for another store returns `401`, the same as a bad token. If you integrate
+several stores, use the same token and change `store_id`.
+
+## Unauthorized responses
+
+All authentication failures return HTTP `401` with this body:
+
+```json
+{ "error": "Unauthorized", "message": "invalid token" }
+```
+
+| `message` | Meaning |
+|---|---|
+| `no authorization header found` | The `Authorization` header is missing. |
+| `no bearer token found in authorization` | The header is present but has no token after the scheme. |
+| `invalid token` | The token is malformed, expired, or was not issued by Cubbo. Request a new one. |
+| `invalid credentials` | On `POST /auth/token`: unknown `client_id` or wrong `client_secret`. |
+| `not allowed to show? this Store` (and similar) | The token is valid but the account cannot access the requested store or resource. |
+
+<Note>
+Credentials belong to a company, not to a person. If a secret leaks, ask Cubbo to rotate it. Tokens issued
+with the old secret stay valid until they expire.
+</Note>
