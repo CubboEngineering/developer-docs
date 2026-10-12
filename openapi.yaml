@@ -7119,17 +7119,6 @@ components:
               type: integer
               description: Next NF-e number configured
               example: 4567
-    FulfillmentTestResponse:
-      type: object
-      properties:
-        error:
-          type: string
-          description: Confirmation message (despite the key name)
-          example: Started fulfillment test job successfully.
-        code:
-          type: integer
-          description: Always 200
-          example: 200
     ShippingMethod:
       type: object
       description: A shipping method as exposed to API clients
@@ -15924,55 +15913,6 @@ paths:
                     error: No shipping groups found on source store 1234 for the given ids
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /stores/{id}/fulfillment-test:
-    post:
-      tags:
-        - Stores
-      operationId: startStoreFulfillmentTest
-      summary: Start a fulfillment test for an order
-      description: |
-        Testing helper. Simulates the fulfillment flow of an existing order so you can verify
-        that your webhook receiver handles order status notifications. The order must belong to
-        the store, must have been created through an Open API integration with order webhooks
-        active, and must already have a shipping method assigned.
-
-        - The order is identified by its `order-number` parameter (note the hyphen).
-        - Any precondition failure (unknown store or order, order not created through an
-          Open API integration with webhooks active, no shipping method) results in HTTP 500.
-        - Despite the key name, `error` in the success body is a confirmation message.
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: Id of the store that owns the order
-          schema:
-            type: integer
-            example: 1234
-        - name: order-number
-          in: query
-          required: true
-          description: Order number of the order to run the fulfillment test for
-          schema:
-            type: string
-            example: ORD-0001
-      responses:
-        "200":
-          description: Fulfillment test started
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FulfillmentTestResponse"
-              example:
-                error: Started fulfillment test job successfully.
-                code: 200
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "500":
-          description: >-
-            A precondition failed (store or order not found, order not created through an Open API integration
-            with webhooks active, no shipping method) or an unexpected error occurred
 webhooks:
   orderUpdated:
     post:
