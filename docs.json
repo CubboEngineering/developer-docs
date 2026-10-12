@@ -97,7 +97,7 @@
           "primary": {
             "type": "button",
             "label": "Obtener credenciales",
-            "href": "/es/quickstart"
+            "href": "https://app.cubbo.com/stores"
           }
         }
       },
@@ -146,7 +146,7 @@
           "primary": {
             "type": "button",
             "label": "Obter credenciais",
-            "href": "/pt-BR/quickstart"
+            "href": "https://app.cubbo.com/stores"
           }
         }
       }
@@ -162,7 +162,7 @@
     "primary": {
       "type": "button",
       "label": "Get credentials",
-      "href": "/quickstart"
+      "href": "https://app.cubbo.com/stores"
     }
   },
   "contextual": {

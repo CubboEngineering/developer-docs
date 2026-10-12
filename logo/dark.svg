@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="236" height="42" viewBox="0 0 236 42" fill="none">
-  <g fill="#60a5fa"><path d="M16.896 27.901V41.4331L33.274 34.1972V20.72L16.896 27.901Z"/><path d="M16.0715 0.00756836L0 7.18856V20.7207L16.0715 13.4848V0.00756836Z"/><path d="M16.896 0V13.4978L26.8632 17.6473V4.21121L16.896 0Z"/><path d="M16.0715 27.8941L0 20.72V34.1972L16.0715 41.4331V27.8941Z"/></g>
+  <g fill="#ffffff"><path d="M16.896 27.901V41.4331L33.274 34.1972V20.72L16.896 27.901Z"/><path d="M16.0715 0.00756836L0 7.18856V20.7207L16.0715 13.4848V0.00756836Z"/><path d="M16.896 0V13.4978L26.8632 17.6473V4.21121L16.896 0Z"/><path d="M16.0715 27.8941L0 20.72V34.1972L16.0715 41.4331V27.8941Z"/></g>
   <text x="44" y="29" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif" font-size="22" font-weight="700" fill="#ffffff">cubbo</text>
-  <text x="112" y="29" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif" font-size="22" font-weight="400" fill="#bae6fd">developers</text>
+  <text x="112" y="29" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif" font-size="22" font-weight="400" fill="#ffffff" fill-opacity="0.85">developers</text>
 </svg>
