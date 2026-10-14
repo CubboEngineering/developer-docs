@@ -7,10 +7,6 @@ You set up the integration yourself in the Cubbo app at [app.cubbo.com](https://
 with your test account, and repeat it with your production account when you are ready to operate. Each account
 gets its own credentials.
 
-<Note>
-The screenshots show the app in Spanish. The app is also available in English and Portuguese; switch the language
-from the selector next to your profile.
-</Note>
 
 ## 1. Create the Open API integration
 
@@ -66,9 +62,19 @@ assigned to that method.
 
 <Steps>
   <Step title="Create a shipping configuration">
-    Click **Create shipping configuration**. Give it a name, choose the **Destination type** (national,
-    international or pickup), the carriers it can use and a **Delivery preference**: best price picks the cheapest
-    carrier, best service picks the fastest delivery at the best price.
+    Click **Create shipping configuration** and fill in:
+
+    - **Configuration name**.
+    - **Destination type**: National, International or Pickup.
+    - **Delivery preference**: best price picks the cheapest carrier; best service picks the fastest delivery
+      at the best price.
+    - **Allow extended zones**: whether to ship to remote areas that may carry an extra charge. The extra cost is
+      considered when Cubbo selects the carrier.
+    - **Eligible carriers**: the carriers this configuration may use, grouped by service level.
+
+    <Frame>
+      <img src="/images/setup/create-shipping-configuration.png" alt="Create shipping configuration dialog with destination type, delivery preference, extended zones and eligible carriers" />
+    </Frame>
   </Step>
   <Step title="Add your shipping methods">
     Click **Create shipping method**. In **Integration Delivery Method**, type the exact name you will send as
@@ -104,12 +110,12 @@ Click **Configure Webhooks** on the integration card. Turn on each webhook you n
 
 | Webhook | Events it receives |
 |---|---|
-| Orders | `orderUpdated`, `orderFulfilled`, `shippingUpdated` |
-| Inventory | `inventoryMovement`. It only sends while the orders webhook is on. |
-| Inventory replenishments | `replenishmentCreated`, `replenishmentScheduled`, `replenishmentStatus` |
+| **Orders Webhook** | `orderUpdated`, `orderFulfilled`, `shippingUpdated` |
+| **Inventory Webhook** | `inventoryMovement`. It only sends while the orders webhook is on. |
+| **Replenishment Webhook** | `replenishmentCreated`, `replenishmentScheduled`, `replenishmentStatus` |
 
 <Frame>
-  <img src="/images/setup/configure-webhooks.png" alt="Configure Webhooks screen with orders, inventory and inventory replenishment toggles and the shared secret" />
+  <img src="/images/setup/configure-webhooks.png" alt="Configure Webhooks screen with orders, inventory and replenishment toggles and the shared secret" />
 </Frame>
 
 On the same screen:

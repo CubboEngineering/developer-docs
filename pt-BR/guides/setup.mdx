@@ -7,10 +7,6 @@ Você mesmo configura a integração no app da Cubbo, em [app.cubbo.com](https:/
 primeiro com sua conta de teste e repita com sua conta de produção quando estiver pronto para operar. Cada conta
 tem suas próprias credenciais.
 
-<Note>
-As capturas de tela mostram o app em espanhol. O app também está disponível em português e inglês; troque o idioma
-no seletor ao lado do seu perfil.
-</Note>
 
 ## 1. Crie a integração Open API
 
@@ -67,9 +63,20 @@ com a configuração de envio atribuída a essa modalidade.
 
 <Steps>
   <Step title="Crie uma configuração de envio">
-    Clique em **Criar configuração de envio**. Dê um nome, escolha o **Tipo de destino** (nacional, internacional ou
-    retirada), as transportadoras que ela pode usar e uma **Preferência de entrega**: melhor preço escolhe a
-    transportadora mais econômica e melhor serviço escolhe a entrega mais rápida ao melhor preço.
+    Clique em **Criar configuração de envio** e preencha:
+
+    - **Nome da configuração**.
+    - **Tipo de destino**: Nacional, Internacional ou Retirada.
+    - **Preferência de entrega**: melhor preço escolhe a transportadora mais econômica; melhor serviço escolhe a
+      entrega mais rápida ao melhor preço.
+    - **Permitir zonas estendidas**: se o envio para áreas remotas, que podem ter cobrança adicional, é permitido. A Cubbo
+      considera esse custo ao selecionar a transportadora.
+    - **Transportadoras elegíveis**: as transportadoras que essa configuração pode usar, agrupadas por nível de
+      serviço.
+
+    <Frame>
+      <img src="/images/setup/create-shipping-configuration.png" alt="Janela Criar configuração de envio com tipo de destino, preferência de entrega, zonas estendidas e transportadoras elegíveis" />
+    </Frame>
   </Step>
   <Step title="Adicione suas modalidades de envio">
     Clique em **Criar modalidade de envio**. Em **Modalidade de Envio de Integração**, digite o nome exato que você
