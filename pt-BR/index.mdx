@@ -57,8 +57,9 @@ Todas as requisições, exceto a criação do token, levam um token `Bearer`. Ve
     Chame `POST /v1/auth/token` e use o token retornado como token `Bearer` em todas as outras requisições.
   </Step>
   <Step title="Saiba o ID da sua loja">
-    A maioria dos endpoints recebe um `store_id`. Uma conta de API pode ter acesso a várias lojas; a API só
-    responde pelas lojas que ela tem permissão para ver.
+    A maioria dos endpoints recebe um `store_id`. Você o encontra em **Lojas Autorizadas** ao criar ou regenerar
+    as credenciais no app. Uma conta de API pode ter acesso a várias lojas; a API só responde pelas lojas que ela
+    tem permissão para ver.
   </Step>
   <Step title="Passe para sua conta de produção">
     Quando seus testes funcionarem, peça ao seu contato na Cubbo para criar sua conta de produção. Configure a

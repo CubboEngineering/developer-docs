@@ -22,8 +22,12 @@ tiene sus propias credenciales.
     </Frame>
   </Step>
   <Step title="Guarda tus credenciales">
-    La app muestra tu `client_id` y tu `client_secret`, y las tiendas a las que tienen acceso esas credenciales.
-    Copia ambos ahora y guárdalos en un lugar seguro.
+    La app muestra tu `client_id` y tu `client_secret`. Copia ambos ahora y guárdalos en un lugar seguro.
+
+    En **Tiendas Autorizadas** también aparecen las tiendas a las que tienen acceso esas credenciales, por ejemplo
+    *Estas credenciales tienen acceso a las tiendas: 1234*. Cada número es un `store_id`: el valor que envías en
+    `store_id` en órdenes, productos, inventario y los demás endpoints de tienda. Si aparece más de una tienda, las
+    mismas credenciales sirven para todas; cambia el `store_id` para elegir la tienda.
   </Step>
 </Steps>
 

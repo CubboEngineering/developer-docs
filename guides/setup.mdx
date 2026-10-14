@@ -23,8 +23,12 @@ gets its own credentials.
     </Frame>
   </Step>
   <Step title="Save your credentials">
-    The app shows your `client_id` and `client_secret`, and the stores those credentials can access. Copy both
-    now and store them securely.
+    The app shows your `client_id` and `client_secret`. Copy both now and store them securely.
+
+    Under **Authorized Stores** it also lists the stores these credentials can access, for example
+    *These credentials have access to stores: 1234*. Each number is a `store_id`: the value you send in
+    `store_id` on orders, products, inventory and the other store endpoints. If more than one store is listed,
+    the same credentials work for all of them; change `store_id` to choose the store.
   </Step>
 </Steps>
 

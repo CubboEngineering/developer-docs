@@ -57,8 +57,9 @@ Every request except token creation carries a `Bearer` token. See [Authenticatio
     Call `POST /v1/auth/token` and use the returned token as a `Bearer` token on every other request.
   </Step>
   <Step title="Know your store ID">
-    Most endpoints take a `store_id`. One API account can have access to several stores; the API only
-    answers for stores it is allowed to see.
+    Most endpoints take a `store_id`. You find it under **Authorized Stores** when you create or regenerate the
+    credentials in the app. One API account can have access to several stores; the API only answers for stores
+    it is allowed to see.
   </Step>
   <Step title="Move to your production account">
     When your tests pass, ask your Cubbo onboarding contact to create your production account. Set up the
