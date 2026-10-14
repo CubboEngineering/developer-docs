@@ -9420,6 +9420,13 @@ paths:
       operationId: listLots
       summary: List the lots of a product
       description: >
+        **Send `sku` or `bar_code`.** Both show as optional because you may send either one, but a request
+
+        with neither returns 422 `either sku or bar_code is required`. In the playground, open the optional
+
+        fields and fill in one of them.
+
+
         Returns the lots of exactly one product, with each lot's status, expiration date and stock
 
         buckets. The product is addressed by `sku` or `bar_code` (at least one is required) and is
