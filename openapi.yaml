@@ -8712,6 +8712,7 @@ paths:
                 error: Too many requests. Please slow down and try again later.
         "500":
           $ref: "#/components/responses/InternalServerError"
+      security: []
   /brazil/orders:
     post:
       tags:
@@ -9166,6 +9167,7 @@ paths:
                     code: CNC_INVALID_ORDER_ID
         "500":
           description: Unexpected error, including a missing `postal_code`
+      security: []
   /inventory:
     get:
       tags:
