@@ -13,10 +13,24 @@ A API é uma API REST JSON disponível em:
 https://api.cubbo.com/v1
 ```
 
-Há um único ambiente. Você testa sua integração em produção com uma loja de teste que a Cubbo marca como conta
-de teste e, depois, opera com sua conta de produção. Cada conta tem suas próprias credenciais.
-
 Todas as requisições, exceto a criação do token, levam um token `Bearer`. Veja [Autenticação](/pt-BR/guides/authentication).
+
+## Loja de testes e conta de produção
+
+A Cubbo tem um único ambiente: produção. Não existe um sandbox separado. Em vez disso, você testa sua integração em
+uma **loja de testes** antes de começar a operar:
+
+1. **Fale com a Cubbo.** Escreva para a equipe de suporte da Cubbo ou para o seu gerente de conta. Eles orientam
+   você no processo e criam sua loja de testes, que a Cubbo marca como conta de teste.
+2. **Faça todos os seus testes na loja de testes.** Crie a integração e suas credenciais, configure as modalidades
+   de envio e os webhooks e teste cada endpoint que sua integração usa.
+3. **Ative sua conta de produção.** Quando terminar seus testes, peça ao seu gerente de conta para ativar sua conta
+   de produção. Ela tem suas próprias credenciais e seu próprio `store_id`.
+
+<Warning>
+A conta de teste e a de produção nunca compartilham credenciais. Ao entrar em produção, substitua na sua integração
+o `client_id`, o `client_secret` e o `store_id` pelos de produção.
+</Warning>
 
 ## O que você pode fazer
 
@@ -44,9 +58,9 @@ Todas as requisições, exceto a criação do token, levam um token `Bearer`. Ve
 ## Antes de começar
 
 <Steps>
-  <Step title="Peça sua conta de teste">
-    Peça à pessoa que conduz seu onboarding na Cubbo para criar sua conta de teste. Você recebe acesso ao app da
-    Cubbo com uma loja de teste.
+  <Step title="Peça sua loja de testes">
+    Fale com a equipe de suporte da Cubbo ou com o seu gerente de conta. Eles orientam você e criam sua loja de
+    testes, com acesso ao app da Cubbo.
   </Step>
   <Step title="Configure a integração no app">
     No app da Cubbo, abra **Integrações**, crie uma integração **Open API** e copie seu `client_id` e seu
@@ -62,8 +76,8 @@ Todas as requisições, exceto a criação do token, levam um token `Bearer`. Ve
     tem permissão para ver.
   </Step>
   <Step title="Passe para sua conta de produção">
-    Quando seus testes funcionarem, peça ao seu contato na Cubbo para criar sua conta de produção. Configure a
-    integração nela também: ela tem credenciais e um `store_id` diferentes. Troque ambos na sua integração para
+    Quando terminar seus testes, peça ao seu gerente de conta para ativar sua conta de produção. Configure a
+    integração nela também: ela tem credenciais e um `store_id` diferentes. Troque-os na sua integração para
     começar a operar.
   </Step>
 </Steps>

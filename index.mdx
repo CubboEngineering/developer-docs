@@ -13,10 +13,24 @@ The API is a JSON REST API served at:
 https://api.cubbo.com/v1
 ```
 
-There is one environment. You test your integration in production, with a test store that Cubbo marks as a
-test account, and then you operate with your production account. Each account has its own credentials.
-
 Every request except token creation carries a `Bearer` token. See [Authentication](/guides/authentication).
+
+## Test store and production account
+
+Cubbo has a single environment: production. There is no separate sandbox. Instead, you test your integration in a
+**test store** before you start operating:
+
+1. **Contact Cubbo.** Write to Cubbo's support team or to your account manager. They guide you through the process
+   and create your test store, which Cubbo marks as a test account.
+2. **Run all your tests in the test store.** Create the integration and its credentials, configure shipping methods
+   and webhooks, and test every endpoint your integration uses.
+3. **Activate your production account.** When your tests are complete, ask your account manager to activate your
+   production account. It has its own credentials and its own `store_id`.
+
+<Warning>
+Test and production accounts never share credentials. When you go live, replace the `client_id`, `client_secret`
+and `store_id` in your integration with the production ones.
+</Warning>
 
 ## What you can do
 
@@ -44,9 +58,9 @@ Every request except token creation carries a `Bearer` token. See [Authenticatio
 ## Before you start
 
 <Steps>
-  <Step title="Ask for your test account">
-    Ask the person leading your Cubbo onboarding to create your test account. You get access to the Cubbo app with
-    a test store.
+  <Step title="Ask for your test store">
+    Contact Cubbo's support team or your account manager. They guide you and create your test store, with access
+    to the Cubbo app.
   </Step>
   <Step title="Set up the integration in the app">
     In the Cubbo app, open **Integrations**, create an **Open API** integration and copy your `client_id` and
@@ -62,8 +76,8 @@ Every request except token creation carries a `Bearer` token. See [Authenticatio
     it is allowed to see.
   </Step>
   <Step title="Move to your production account">
-    When your tests pass, ask your Cubbo onboarding contact to create your production account. Set up the
-    integration there too: it has different credentials and a different `store_id`. Switch both in your
+    When your tests are complete, ask your account manager to activate your production account. Set up the
+    integration there too: it has different credentials and a different `store_id`. Switch them in your
     integration to start operating.
   </Step>
 </Steps>
