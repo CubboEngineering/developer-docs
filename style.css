@@ -1,0 +1,69 @@
+/* Cubbo OMS look for the Mintlify site. Tokens mirror the OMS design. */
+:root {
+  --cubbo-navy: #0f2955;
+  --cubbo-navy-hover: #3562b7;
+  --cubbo-on-navy: #ffffff;
+  --cubbo-on-navy-2: #bae6fd;
+  --cubbo-radius: 8px;
+  --cubbo-radius-sm: 6px;
+}
+:root.dark {
+  --cubbo-navy: #0c2148;
+  --cubbo-navy-hover: #2c5299;
+}
+
+/* System UI font, as in OMS */
+body,
+#navbar,
+#sidebar,
+#content-area {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell,
+    "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+}
+
+/* Navy top bar */
+#navbar > div:first-child,
+#navbar {
+  background-color: var(--cubbo-navy) !important;
+  border-bottom-color: transparent !important;
+}
+#navbar a,
+#navbar button,
+#navbar span,
+#navbar svg {
+  color: var(--cubbo-on-navy);
+}
+#navbar a:hover {
+  color: var(--cubbo-on-navy-2);
+}
+#navbar #search-bar-entry,
+#navbar button[id*="search"] {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  color: var(--cubbo-on-navy-2) !important;
+}
+
+/* Rounded corners like OMS cards and inputs */
+.card,
+[class*="rounded-xl"],
+[class*="rounded-2xl"] {
+  border-radius: var(--cubbo-radius) !important;
+}
+pre,
+.code-block,
+[class*="code-group"] {
+  border-radius: var(--cubbo-radius-sm) !important;
+}
+
+/* Inline code: OMS pill colors so it stands out on the light background */
+html:not(.dark) :not(pre) > code {
+  background-color: #e8f0fe !important;
+  color: #1e3a8a !important;
+  border: 1px solid #c7dafc !important;
+  border-radius: 4px !important;
+  padding: 0.1em 0.4em !important;
+}
+html:not(.dark) a > code,
+html:not(.dark) a :not(pre) > code {
+  color: #327cfb !important;
+}

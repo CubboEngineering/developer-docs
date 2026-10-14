@@ -1,0 +1,76 @@
+---
+title: "Autenticação"
+description: "Troque suas credenciais de cliente por um bearer token e envie-o em todas as requisições."
+---
+
+A Clients API usa credenciais de cliente no estilo OAuth. Você troca um `client_id` e um `client_secret` por um
+token de curta duração e envia esse token como token `Bearer` no header `Authorization`.
+
+## Obter um token
+
+```bash
+curl -X POST https://api.cubbo.com/v1/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{ "client_id": "YOUR_CLIENT_ID", "client_secret": "YOUR_CLIENT_SECRET" }'
+```
+
+```json
+{
+  "token": "<token>",
+  "expires_in": 86400,
+  "type": "Bearer"
+}
+```
+
+| Campo | Observações |
+|---|---|
+| `client_id`, `client_secret` | Emitidos pela Cubbo por conta de API. Mantenha o secret no lado do servidor. |
+| `expires_in` | Opcional. Validade do token em segundos, de 10 a 86400 (24 horas). Padrão: 86400. |
+| `grant_type` | Opcional. Somente `client_credentials` é suportado. |
+
+O token é um JWT assinado. Sua validade é fixada no momento da emissão, então solicite um novo token pouco antes de
+`expires_in` se esgotar. Diferenças de relógio de até 30 segundos são toleradas.
+
+<Warning>
+Não solicite um token a cada chamada à API. As solicitações de token são limitadas a 60 por minuto por `client_id`
+e o token é válido por até 24 horas. Armazene-o em cache.
+</Warning>
+
+## Usar o token
+
+Envie-o em todas as outras requisições:
+
+```bash
+curl https://api.cubbo.com/v1/orders?store_id=1234 \
+  -H "Authorization: Bearer <token>"
+```
+
+O nome do header não diferencia maiúsculas de minúsculas. O esquema deve ser `Bearer`.
+
+## Acesso às lojas
+
+Uma conta de API está vinculada a uma ou mais lojas. Os endpoints que recebem um `store_id` só respondem pelas lojas que a
+conta pode acessar; consultar outra loja retorna `401`, o mesmo que um token inválido. Se você integra
+várias lojas, use o mesmo token e altere o `store_id`.
+
+## Respostas não autorizadas
+
+Todas as falhas de autenticação retornam HTTP `401` com este corpo:
+
+```json
+{ "error": "Unauthorized", "message": "invalid token" }
+```
+
+| `message` | Significado |
+|---|---|
+| `no authorization header found` | O header `Authorization` está ausente. |
+| `no bearer token found in authorization` | O header está presente, mas não há token após o esquema. |
+| `invalid token` | O token está malformado, expirou ou não foi emitido pela Cubbo. Solicite um novo. |
+| `invalid credentials` | Em `POST /auth/token`: `client_id` desconhecido ou `client_secret` incorreto. |
+| `not allowed to show? this Store` (e similares) | O token é válido, mas a conta não pode acessar a loja ou o recurso solicitado. |
+
+<Note>
+As credenciais pertencem a uma empresa, não a uma pessoa. Se um secret vazar, regenere as credenciais no app da
+Cubbo: abra **Integrações** e clique em **Regenerar Credenciais** na sua integração Open API. As credenciais atuais
+param de funcionar imediatamente, então atualize seu sistema logo em seguida.
+</Note>

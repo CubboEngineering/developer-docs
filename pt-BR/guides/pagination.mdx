@@ -1,0 +1,61 @@
+---
+title: "Paginação"
+description: "Como os endpoints de listagem paginam os resultados."
+---
+
+Os endpoints de listagem são paginados com os parâmetros de query
+`page` e `per_page` e retornam um objeto `meta` junto aos resultados.
+
+```bash
+curl "https://api.cubbo.com/v1/orders?store_id=1234&page=2&per_page=50" \
+  -H "Authorization: Bearer <token>"
+```
+
+```json
+{
+  "orders": [ "..." ],
+  "meta": {
+    "current_page": 2,
+    "next_page": 3,
+    "prev_page": 1,
+    "total_pages": 7,
+    "first_page": false,
+    "last_page": false,
+    "per_page": 50,
+    "total_count": 312
+  }
+}
+```
+
+| Campo | Significado |
+|---|---|
+| `current_page` | A página que você solicitou. As páginas começam em 1. |
+| `next_page` / `prev_page` | Números das páginas a solicitar em seguida, ou `null` em cada extremidade. |
+| `total_pages` | Número total de páginas com esse `per_page`. |
+| `first_page` / `last_page` | Booleanos, úteis para interromper um loop. |
+| `per_page` | O tamanho de página efetivamente aplicado. Se você pedir mais do que o máximo do endpoint, o máximo é aplicado. |
+| `total_count` | Total de registros correspondentes. |
+
+Cada endpoint tem seu próprio tamanho de página e chave de resposta:
+
+| Endpoint | Chave dos registros | `per_page` padrão | `per_page` máximo |
+|---|---|---|---|
+| `GET /orders` | `orders` | 10 | 100, valores maiores são reduzidos para 100 |
+| `GET /orders/with-fields` | `orders` | 10 | 100, valores maiores retornam `422` |
+| `GET /orders/awaiting-invoice` | `orders` | 10 | 100, valores maiores retornam `422` |
+| `GET /returns/awaiting-invoice` | `returns` | 10 | 100, valores maiores retornam `422` |
+| `GET /inventory` | `products` | 10 | 200, valores maiores retornam `422` |
+| `GET /lots` | `lots` | 25 | 200, valores maiores retornam `422` |
+
+<Note>
+`GET /orders` não tem ordenação padrão. Sempre envie `sort_by` e `sort` ao paginar por ele, caso contrário os registros podem
+mudar de página.
+</Note>
+
+## Iterar com segurança
+
+- Pare quando `last_page` for `true` ou `next_page` for `null`, em vez de comparar `current_page` com `total_pages`.
+- Use uma ordenação estável (`sort_by` mais `sort`, quando o endpoint suportar) ao paginar dados que
+  mudam enquanto você os lê, e filtre por um intervalo de datas (`channel_created_at`, `shipping_date`) para manter o
+  conjunto limitado.
+- Para sincronização quase em tempo real, prefira [webhooks](/pt-BR/guides/webhooks) a consultar todas as páginas periodicamente.

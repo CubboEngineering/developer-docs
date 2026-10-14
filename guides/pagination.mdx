@@ -1,0 +1,61 @@
+---
+title: "Pagination"
+description: "How list endpoints page through results."
+---
+
+List endpoints are paginated with
+`page` and `per_page` query parameters and return a `meta` object next to the results.
+
+```bash
+curl "https://api.cubbo.com/v1/orders?store_id=1234&page=2&per_page=50" \
+  -H "Authorization: Bearer <token>"
+```
+
+```json
+{
+  "orders": [ "..." ],
+  "meta": {
+    "current_page": 2,
+    "next_page": 3,
+    "prev_page": 1,
+    "total_pages": 7,
+    "first_page": false,
+    "last_page": false,
+    "per_page": 50,
+    "total_count": 312
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `current_page` | The page you requested. Pages start at 1. |
+| `next_page` / `prev_page` | Page numbers to request next, or `null` at either end. |
+| `total_pages` | Total number of pages at this `per_page`. |
+| `first_page` / `last_page` | Booleans, handy for stopping a loop. |
+| `per_page` | The page size actually applied. If you ask for more than the endpoint's maximum, the maximum is applied. |
+| `total_count` | Total matching rows. |
+
+Each endpoint has its own page size and response key:
+
+| Endpoint | Rows key | Default `per_page` | Maximum `per_page` |
+|---|---|---|---|
+| `GET /orders` | `orders` | 10 | 100, larger values are lowered to 100 |
+| `GET /orders/with-fields` | `orders` | 10 | 100, larger values return `422` |
+| `GET /orders/awaiting-invoice` | `orders` | 10 | 100, larger values return `422` |
+| `GET /returns/awaiting-invoice` | `returns` | 10 | 100, larger values return `422` |
+| `GET /inventory` | `products` | 10 | 200, larger values return `422` |
+| `GET /lots` | `lots` | 25 | 200, larger values return `422` |
+
+<Note>
+`GET /orders` has no default sort order. Always send `sort_by` and `sort` when you page through it, or rows can
+move between pages.
+</Note>
+
+## Iterating safely
+
+- Stop when `last_page` is `true` or `next_page` is `null`, rather than comparing `current_page` with `total_pages`.
+- Use a stable sort (`sort_by` plus `sort`, where the endpoint supports it) when you page through data that
+  changes while you read it, and filter by a date range (`channel_created_at`, `shipping_date`) to keep the
+  set bounded.
+- For near-real-time sync, prefer [webhooks](/guides/webhooks) over polling every page.
