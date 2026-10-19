@@ -1,20 +1,95 @@
 ---
 title: "Introduction"
-description: "Welcome to your project"
+description: "Integrate your store, ERP or marketplace with Cubbo's fulfillment network through the Clients API."
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+The Cubbo Clients API lets you connect your own systems to Cubbo's fulfillment operation. You push orders,
+keep your catalog and stock in sync, announce inbound shipments (replenishments), manage returns and receive
+webhooks when something changes in the warehouse or during delivery.
 
-<Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
-</Tip>
+The API is a JSON REST API served at:
+
+```text
+https://api.cubbo.com/v1
+```
+
+Every request except token creation carries a `Bearer` token. See [Authentication](/guides/authentication).
+
+## Test store and production account
+
+Cubbo has a single environment: production. There is no separate sandbox. Instead, you test your integration in a
+**test store** before you start operating:
+
+1. **Contact Cubbo.** Write to Cubbo's support team or to your account manager. They guide you through the process
+   and create your test store, which Cubbo marks as a test account.
+2. **Run all your tests in the test store.** Create the integration and its credentials, configure shipping methods
+   and webhooks, and test every endpoint your integration uses.
+3. **Activate your production account.** When your tests are complete, ask your account manager to activate your
+   production account. It has its own credentials and its own `store_id`.
+
+<Warning>
+Test and production accounts never share credentials. When you go live, replace the `client_id`, `client_secret`
+and `store_id` in your integration with the production ones.
+</Warning>
+
+## What you can do
+
+<CardGroup cols={2}>
+  <Card title="Orders" icon="box" href="/api-reference/orders/create-an-order">
+    Create sales orders, update them before they are picked, hold or cancel them, and read their fulfillment and delivery status.
+  </Card>
+  <Card title="Inventory" icon="warehouse" href="/api-reference/inventory/list-products-with-stock">
+    Create and update products, read available stock per warehouse, and manage lots.
+  </Card>
+  <Card title="Replenishments" icon="truck-ramp-box" href="/api-reference/replenishments/create-a-replenishment">
+    Announce inbound shipments to the warehouse and follow what was received.
+  </Card>
+  <Card title="Returns" icon="rotate-left" href="/api-reference/returns/request-a-return-for-a-shipped-order">
+    Register a return, follow its reception and decide what to do with the returned units.
+  </Card>
+  <Card title="Shipping" icon="map" href="/api-reference/shipping-methods/list-active-shipping-methods-available-to-a-store">
+    List the shipping methods available to a store, check coverage by postal code and quote a shipment.
+  </Card>
+  <Card title="Webhooks" icon="bolt" href="/guides/webhooks">
+    Receive signed HTTPS notifications for order, shipping, inventory and replenishment events.
+  </Card>
+</CardGroup>
+
+## Before you start
+
+<Steps>
+  <Step title="Ask for your test store">
+    Contact Cubbo's support team or your account manager. They guide you and create your test store, with access
+    to the Cubbo app.
+  </Step>
+  <Step title="Set up the integration in the app">
+    In the Cubbo app, open **Integrations**, create an **Open API** integration and copy your `client_id` and
+    `client_secret`. Then map your shipping methods and configure webhooks. See
+    [Set up your integration](/guides/setup).
+  </Step>
+  <Step title="Exchange them for a token">
+    Call `POST /v1/auth/token` and use the returned token as a `Bearer` token on every other request.
+  </Step>
+  <Step title="Know your store ID">
+    Most endpoints take a `store_id`. You find it under **Authorized Stores** when you create or regenerate the
+    credentials in the app. One API account can have access to several stores; the API only answers for stores
+    it is allowed to see.
+  </Step>
+  <Step title="Move to your production account">
+    When your tests are complete, ask your account manager to activate your production account. Set up the
+    integration there too: it has different credentials and a different `store_id`. Switch them in your
+    integration to start operating.
+  </Step>
+</Steps>
 
 <Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
+  Create your first order in five minutes.
 </Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>
+
+## Conventions
+
+- Request and response bodies are JSON (`Content-Type: application/json`).
+- Dates and times are ISO 8601 strings in UTC unless the field says otherwise.
+- Money fields are decimals in the store's currency.
+- Identifiers (`id`, `store_id`, `order_id`) are integers. `order_number` is your own reference and is a string.
+- Errors always come back as a JSON object with an `error` key. See [Errors](/guides/errors).

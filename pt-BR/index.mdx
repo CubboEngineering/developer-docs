@@ -1,0 +1,95 @@
+---
+title: "Introdução"
+description: "Integre sua loja, ERP ou marketplace à rede de fulfillment da Cubbo por meio da Clients API."
+---
+
+A Clients API da Cubbo permite que você conecte seus próprios sistemas à operação de fulfillment da Cubbo. Você envia pedidos,
+mantém seu catálogo e estoque sincronizados, anuncia remessas de entrada, os recebimentos (replenishment), gerencia devoluções e recebe
+webhooks quando algo muda no armazém ou durante a entrega.
+
+A API é uma API REST JSON disponível em:
+
+```text
+https://api.cubbo.com/v1
+```
+
+Todas as requisições, exceto a criação do token, levam um token `Bearer`. Veja [Autenticação](/pt-BR/guides/authentication).
+
+## Loja de testes e conta de produção
+
+A Cubbo tem um único ambiente: produção. Não existe um sandbox separado. Em vez disso, você testa sua integração em
+uma **loja de testes** antes de começar a operar:
+
+1. **Fale com a Cubbo.** Escreva para a equipe de suporte da Cubbo ou para o seu gerente de conta. Eles orientam
+   você no processo e criam sua loja de testes, que a Cubbo marca como conta de teste.
+2. **Faça todos os seus testes na loja de testes.** Crie a integração e suas credenciais, configure as modalidades
+   de envio e os webhooks e teste cada endpoint que sua integração usa.
+3. **Ative sua conta de produção.** Quando terminar seus testes, peça ao seu gerente de conta para ativar sua conta
+   de produção. Ela tem suas próprias credenciais e seu próprio `store_id`.
+
+<Warning>
+A conta de teste e a de produção nunca compartilham credenciais. Ao entrar em produção, substitua na sua integração
+o `client_id`, o `client_secret` e o `store_id` pelos de produção.
+</Warning>
+
+## O que você pode fazer
+
+<CardGroup cols={2}>
+  <Card title="Pedidos" icon="box" href="/api-reference/orders/create-an-order">
+    Crie pedidos de venda, atualize-os antes da separação, retenha-os ou cancele-os e consulte o status de fulfillment e de entrega.
+  </Card>
+  <Card title="Inventário" icon="warehouse" href="/api-reference/inventory/list-products-with-stock">
+    Crie e atualize produtos, consulte o estoque disponível por armazém e gerencie lotes.
+  </Card>
+  <Card title="Recebimentos" icon="truck-ramp-box" href="/api-reference/replenishments/create-a-replenishment">
+    Anuncie remessas de entrada para o armazém e acompanhe o que foi recebido.
+  </Card>
+  <Card title="Devoluções" icon="rotate-left" href="/api-reference/returns/request-a-return-for-a-shipped-order">
+    Registre uma devolução, acompanhe seu recebimento e decida o que fazer com as unidades devolvidas.
+  </Card>
+  <Card title="Envio" icon="map" href="/api-reference/shipping-methods/list-active-shipping-methods-available-to-a-store">
+    Liste os métodos de envio disponíveis para uma loja, verifique a cobertura por CEP e cote um envio.
+  </Card>
+  <Card title="Webhooks" icon="bolt" href="/pt-BR/guides/webhooks">
+    Receba notificações HTTPS assinadas para eventos de pedidos, envios, inventário e recebimentos.
+  </Card>
+</CardGroup>
+
+## Antes de começar
+
+<Steps>
+  <Step title="Peça sua loja de testes">
+    Fale com a equipe de suporte da Cubbo ou com o seu gerente de conta. Eles orientam você e criam sua loja de
+    testes, com acesso ao app da Cubbo.
+  </Step>
+  <Step title="Configure a integração no app">
+    No app da Cubbo, abra **Integrações**, crie uma integração **Open API** e copie seu `client_id` e seu
+    `client_secret`. Depois configure suas modalidades de envio e seus webhooks. Veja
+    [Configure sua integração](/pt-BR/guides/setup).
+  </Step>
+  <Step title="Troque-as por um token">
+    Chame `POST /v1/auth/token` e use o token retornado como token `Bearer` em todas as outras requisições.
+  </Step>
+  <Step title="Saiba o ID da sua loja">
+    A maioria dos endpoints recebe um `store_id`. Você o encontra em **Lojas Autorizadas** ao criar ou regenerar
+    as credenciais no app. Uma conta de API pode ter acesso a várias lojas; a API só responde pelas lojas que ela
+    tem permissão para ver.
+  </Step>
+  <Step title="Passe para sua conta de produção">
+    Quando terminar seus testes, peça ao seu gerente de conta para ativar sua conta de produção. Configure a
+    integração nela também: ela tem credenciais e um `store_id` diferentes. Troque-os na sua integração para
+    começar a operar.
+  </Step>
+</Steps>
+
+<Card title="Início rápido" icon="rocket" href="/pt-BR/quickstart">
+  Crie seu primeiro pedido em cinco minutos.
+</Card>
+
+## Convenções
+
+- Os corpos de requisição e resposta são JSON (`Content-Type: application/json`).
+- Datas e horários são strings ISO 8601 em UTC, a menos que o campo indique o contrário.
+- Campos monetários são decimais na moeda da loja.
+- Identificadores (`id`, `store_id`, `order_id`) são inteiros. `order_number` é a sua própria referência e é uma string.
+- Os erros sempre retornam como um objeto JSON com uma chave `error`. Veja [Erros](/pt-BR/guides/errors).

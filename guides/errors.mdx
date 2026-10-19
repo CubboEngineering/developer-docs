@@ -1,0 +1,85 @@
+---
+title: "Errors"
+description: "HTTP status codes and the error body returned by the Clients API."
+---
+
+Every error response is a JSON object with an `error` key. Successful responses never include it.
+
+```json
+{ "error": "Parameter store_id is required" }
+```
+
+Authentication errors add a `message` key and keep `error` fixed to `"Unauthorized"`:
+
+```json
+{ "error": "Unauthorized", "message": "invalid token" }
+```
+
+Some business errors on orders, returns and replenishments add a stable `code` you can match on, and
+sometimes a `context` object with related identifiers:
+
+```json
+{
+  "error": "order with order_number ORD-0001 already exists with id 987654",
+  "code": "ORDER_ALREADY_EXISTS",
+  "context": { "order_id": 987654 }
+}
+```
+
+When an endpoint returns codes, its reference page lists them. Treat `error` as text for humans and
+`code` as the value to branch on.
+
+## Status codes
+
+| Status | When | What to do |
+|---|---|---|
+| `400 Bad Request` | The body is not valid JSON. | Fix the request body. |
+| `401 Unauthorized` | Missing, invalid or expired token, wrong credentials, or no access to the store. See [Authentication](/guides/authentication). | Request a new token or check the `store_id`. |
+| `404 Not Found` | The resource does not exist or is not visible to your account. Some endpoints return `422` instead; check the endpoint reference. | Check the identifier. |
+| `409 Conflict` | The same order is already being created (duplicate request in flight) or already exists. | Do not retry blindly; read the existing order. |
+| `422 Unprocessable Entity` | A parameter is missing or invalid, or the request violates a business rule (for example, updating an order that is already shipped). | Read `error`; it is written for humans and is stable enough to match on. |
+| `429 Too Many Requests` | You exceeded the [rate limit](/guides/rate-limits). | Wait for `Retry-After` seconds and retry. |
+| `500 Internal Server Error` | Unexpected failure on Cubbo's side. | Retry with backoff. If it persists, send the `timestamp` from the body to Cubbo support. |
+
+## Parameter validation
+
+Each endpoint validates its parameters before doing any work. A failed check returns `422` with a message
+that names the parameter, for example:
+
+| Message | Cause |
+|---|---|
+| `Parameter store_id is required` | A required parameter is missing. |
+| `per_page cannot be less than 1` | A numeric parameter is outside its allowed range. |
+
+Wrong types and values outside an allowed list fail the same way, with a message that names the parameter.
+Match on the status code and the parameter name rather than on the exact sentence.
+
+## Business errors
+
+Business rules return `422` with a descriptive sentence, for example
+`"no shipping_label with id 99 was found."`. Each endpoint in the API reference lists the messages it can
+return. Some messages are returned in the language of the warehouse's country (Spanish or Portuguese) when
+they come from the operations side; the reference shows them verbatim.
+
+## Exceptions to watch for
+
+A few endpoints do not follow the patterns above yet. Handle them explicitly:
+
+- **Errors with status `200`.** `POST /orders/cancel`, `POST /orders/delete`, `PATCH /orders/{id}/hold` and
+  `PATCH /orders/{id}/unhold` can answer `200` with an `error` key, for example when the order is in a status that
+  does not allow the action. Check the body for `error` even on `200`.
+- **Click and collect.** These endpoints answer `404` with a `code` such as `ORDER_NOT_FOUND`, and their `500` body is
+  `{"error": "unexpected_error", "timestamp": 1760000000}`.
+- **Order creation.** `POST /orders`, `POST /orders/create-and-ship` and `POST /brazil/orders` answer `500` with
+  `{"error": "unexpected error"}` and no timestamp.
+- **Unknown identifiers.** Some endpoints answer `500` instead of `422` for a `store_id` or `shipping_method_id` that
+  does not exist. Check identifiers before you retry a `500`.
+
+## Unexpected errors
+
+```json
+{ "error": "unexpected error, timestamp: 1760000000" }
+```
+
+The timestamp identifies the failure in Cubbo's logs. Include it when you write to
+[integraciones@cubbo.com](mailto:integraciones@cubbo.com).

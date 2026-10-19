@@ -1,0 +1,148 @@
+---
+title: "Configure sua integração"
+description: "Gere suas credenciais de API, configure suas modalidades de envio e seus webhooks no app da Cubbo."
+---
+
+Você mesmo configura a integração no app da Cubbo, em [app.cubbo.com](https://app.cubbo.com/stores). Faça isso
+primeiro na sua loja de testes, que a equipe de suporte da Cubbo ou o seu gerente de conta cria para você, e repita
+na sua conta de produção quando ela estiver ativada. Cada conta tem suas próprias credenciais.
+
+
+## 1. Crie a integração Open API
+
+<Steps>
+  <Step title="Abra Integrações">
+    No menu superior, abra **Integrações** e clique em **Criar Integração**. Escolha **Open API**.
+  </Step>
+  <Step title="Preencha o formulário">
+    **URL do Webhook** é opcional. Se você a informar, ela deve ser HTTPS, e a Cubbo envia um `POST` de teste para
+    verificar se ela responde. **Nota** é um rótulo opcional para sua equipe. Clique em **Criar Integração**.
+
+    <Frame>
+      <img src="/images/setup/open-api-form.png" alt="Formulário Configurar Integração Open API com URL do webhook e nota" />
+    </Frame>
+  </Step>
+  <Step title="Salve suas credenciais">
+    O app mostra seu `client_id` e seu `client_secret`. Copie os dois agora e guarde-os com segurança.
+
+    <Frame>
+      <img src="/images/setup/credentials.png" alt="Tela de integração criada com Client ID, Client Secret e Lojas Autorizadas" />
+    </Frame>
+
+    Em **Lojas Autorizadas** aparecem também as lojas que essas credenciais podem acessar, por exemplo
+    *Estas credenciais têm acesso às lojas: 1234*. Cada número é um `store_id`: o valor que você envia em
+    `store_id` em pedidos, produtos, inventário e nos demais endpoints de loja. Se aparecer mais de uma loja, as
+    mesmas credenciais servem para todas; troque o `store_id` para escolher a loja.
+  </Step>
+</Steps>
+
+<Warning>
+O `client_secret` é exibido apenas uma vez. Se você perdê-lo, precisa regenerar as credenciais, e as anteriores param
+de funcionar imediatamente.
+</Warning>
+
+Use essas credenciais com `POST /v1/auth/token`. Veja [Autenticação](/pt-BR/guides/authentication).
+
+## 2. Gerencie a integração
+
+Sua integração Open API aparece em **Integrações** como um cartão. Nele você pode:
+
+- **Ativar ou desativar** a integração com o botão. Enquanto ela estiver desativada, a Cubbo não processa nenhuma
+  criação ou atualização vinda dela.
+- Abrir **Modalidade de Envio** para configurar suas modalidades de envio. O selo indica se já estão configuradas.
+- Abrir **Configurar Webhooks** para definir para onde a Cubbo envia os eventos. O selo indica se estão configurados
+  ou com erros.
+- **Regenerar Credenciais** quando um segredo for perdido ou exposto. As credenciais atuais param de funcionar
+  imediatamente.
+
+<Frame>
+  <img src="/images/setup/integration-card.png" alt="Cartão da integração Open API com modalidades de envio, webhooks e regenerar credenciais" />
+</Frame>
+
+## 3. Configure as modalidades de envio
+
+Cada pedido que você cria precisa indicar como será enviado. Você faz isso com `shipping_line_code` em
+`POST /v1/orders`: o valor é o nome de uma modalidade de envio da sua integração. A Cubbo escolhe a transportadora
+com a configuração de envio atribuída a essa modalidade.
+
+<Frame>
+  <img src="/images/setup/shipping-methods.png" alt="Página de modalidades de envio da integração com o botão de pontos de retirada" />
+</Frame>
+
+<Steps>
+  <Step title="Crie uma configuração de envio">
+    Clique em **Criar configuração de envio** e preencha:
+
+    - **Nome da configuração**.
+    - **Tipo de destino**: Nacional, Internacional ou Retirada.
+    - **Preferência de entrega**: melhor preço escolhe a transportadora mais econômica; melhor serviço escolhe a
+      entrega mais rápida ao melhor preço.
+    - **Permitir zonas estendidas**: se o envio para áreas remotas, que podem ter cobrança adicional, é permitido. A Cubbo
+      considera esse custo ao selecionar a transportadora.
+    - **Transportadoras elegíveis**: as transportadoras que essa configuração pode usar, agrupadas por nível de
+      serviço.
+
+    <Frame>
+      <img src="/images/setup/create-shipping-configuration.png" alt="Janela Criar configuração de envio com tipo de destino, preferência de entrega, zonas estendidas e transportadoras elegíveis" />
+    </Frame>
+  </Step>
+  <Step title="Adicione suas modalidades de envio">
+    Clique em **Criar modalidade de envio**. Em **Modalidade de Envio de Integração**, digite o nome exato que você
+    enviará como `shipping_line_code`, por exemplo `standard` ou `express`. Seus pedidos devem enviar exatamente
+    este nome: maiúsculas e minúsculas são diferenciadas e os espaços contam, então `Express` e `express` são
+    modalidades diferentes. Escolha o **Tipo de modalidade de envio**:
+
+    | Tipo | Use para |
+    |---|---|
+    | Nacional | Envios dentro do país. |
+    | Internacional | Envios para outros países. |
+    | Pagamento Contra Entrega | Envios nacionais pagos na entrega. |
+    | Retirada | Envios externos com etiqueta própria. |
+
+    <Frame>
+      <img src="/images/setup/add-shipping-method.png" alt="Janela Adicionar Modalidade de Envio com o nome e o tipo da modalidade" />
+    </Frame>
+  </Step>
+  <Step title="Atribua uma configuração a cada modalidade">
+    Na lista de modalidades de envio, atribua uma das suas configurações de envio a cada modalidade. A Cubbo a usa
+    para selecionar automaticamente a melhor transportadora.
+  </Step>
+</Steps>
+
+<Tip>
+Ative **Pontos de Retirada** na mesma página se você oferece click and collect. Veja os endpoints de Click and collect
+na referência da API.
+</Tip>
+
+## 4. Configure os webhooks
+
+Clique em **Configurar Webhooks** no cartão da integração. Ative cada webhook de que você precisa e informe a URL:
+
+| Webhook | Eventos que recebe |
+|---|---|
+| Pedidos | `orderUpdated`, `orderFulfilled`, `shippingUpdated` |
+| Inventário | `inventoryMovement`. Só envia enquanto o webhook de pedidos estiver ativo. |
+| Remessas de estoque | `replenishmentCreated`, `replenishmentScheduled`, `replenishmentStatus` |
+
+<Frame>
+  <img src="/images/setup/configure-webhooks.png" alt="Tela Configurar Webhooks com os webhooks de pedidos, inventário e remessas de estoque, e o segredo compartilhado" />
+</Frame>
+
+Na mesma tela:
+
+- **Headers Personalizados** adiciona headers fixos a cada requisição de webhook, por exemplo uma API key do seu endpoint.
+- **Testar** envia uma requisição de teste. Passa quando sua URL responde `200`.
+- **Segredo Compartilhado do Webhook** é a chave para verificar a assinatura. Clique em **Ver segredo** para copiá-la.
+- **Regenerar segredo compartilhado do webhook** invalida o segredo atual. Atualize-o no seu sistema depois de salvar.
+
+As URLs devem usar HTTPS e um nome de domínio; endereços IP são rejeitados. O cartão da integração mostra se cada
+webhook está funcionando e quando foi a última entrega bem-sucedida.
+
+Veja [Webhooks](/pt-BR/guides/webhooks) para os eventos, os payloads e a verificação da assinatura.
+
+## 5. Passe para produção
+
+Quando terminar todos os seus testes na loja de testes, peça ao seu gerente de conta para ativar sua conta de
+produção. Repita estes passos nela: você recebe novas credenciais e um novo `store_id`, e configura de novo as
+modalidades de envio e os webhooks. Depois troque as credenciais e o `store_id` na sua integração para começar a
+operar.

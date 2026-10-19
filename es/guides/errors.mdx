@@ -1,0 +1,85 @@
+---
+title: "Errores"
+description: "Códigos de estado HTTP y el cuerpo de error que regresa la Clients API."
+---
+
+Toda respuesta de error es un objeto JSON con una llave `error`. Las respuestas exitosas nunca la incluyen.
+
+```json
+{ "error": "Parameter store_id is required" }
+```
+
+Los errores de autenticación agregan una llave `message` y mantienen `error` fijo en `"Unauthorized"`:
+
+```json
+{ "error": "Unauthorized", "message": "invalid token" }
+```
+
+Algunos errores de negocio en órdenes, devoluciones y reabastecimientos (replenishments) agregan un `code` estable con el que puedes comparar y,
+a veces, un objeto `context` con identificadores relacionados:
+
+```json
+{
+  "error": "order with order_number ORD-0001 already exists with id 987654",
+  "code": "ORDER_ALREADY_EXISTS",
+  "context": { "order_id": 987654 }
+}
+```
+
+Cuando un endpoint regresa códigos, su página de referencia los enlista. Trata `error` como texto para personas y
+`code` como el valor con el que debes decidir la lógica.
+
+## Códigos de estado
+
+| Estado | Cuándo | Qué hacer |
+|---|---|---|
+| `400 Bad Request` | El cuerpo no es JSON válido. | Corrige el cuerpo de la solicitud. |
+| `401 Unauthorized` | Token faltante, inválido o expirado, credenciales incorrectas o sin acceso a la tienda. Consulta [Autenticación](/es/guides/authentication). | Pide un token nuevo o revisa el `store_id`. |
+| `404 Not Found` | El recurso no existe o no es visible para tu cuenta. Algunos endpoints regresan `422` en su lugar; revisa la referencia del endpoint. | Revisa el identificador. |
+| `409 Conflict` | La misma orden ya se está creando (solicitud duplicada en curso) o ya existe. | No reintentes a ciegas; consulta la orden existente. |
+| `422 Unprocessable Entity` | Falta un parámetro o es inválido, o la solicitud viola una regla de negocio (por ejemplo, actualizar una orden que ya se envió). | Lee `error`; está escrito para personas y es lo bastante estable para comparar con él. |
+| `429 Too Many Requests` | Superaste el [límite de solicitudes](/es/guides/rate-limits). | Espera los segundos que indica `Retry-After` y reintenta. |
+| `500 Internal Server Error` | Fallo inesperado del lado de Cubbo. | Reintenta con backoff. Si persiste, envía el `timestamp` del cuerpo a soporte de Cubbo. |
+
+## Validación de parámetros
+
+Cada endpoint valida sus parámetros antes de hacer cualquier trabajo. Una validación fallida regresa `422` con un mensaje
+que nombra el parámetro, por ejemplo:
+
+| Mensaje | Causa |
+|---|---|
+| `Parameter store_id is required` | Falta un parámetro obligatorio. |
+| `per_page cannot be less than 1` | Un parámetro numérico está fuera de su rango permitido. |
+
+Los tipos incorrectos y los valores fuera de una lista permitida fallan de la misma forma, con un mensaje que nombra el parámetro.
+Compara con el código de estado y el nombre del parámetro, no con la frase exacta.
+
+## Errores de negocio
+
+Las reglas de negocio regresan `422` con una frase descriptiva, por ejemplo
+`"no shipping_label with id 99 was found."`. Cada endpoint en la referencia de la API enlista los mensajes que puede
+regresar. Algunos mensajes se regresan en el idioma del país del almacén (español o portugués) cuando
+provienen del lado de operaciones; la referencia los muestra textualmente.
+
+## Excepciones a tener en cuenta
+
+Algunos endpoints todavía no siguen los patrones anteriores. Manéjalos de forma explícita:
+
+- **Errores con estado `200`.** `POST /orders/cancel`, `POST /orders/delete`, `PATCH /orders/{id}/hold` y
+  `PATCH /orders/{id}/unhold` pueden responder `200` con una llave `error`, por ejemplo, cuando la orden está en un estado que
+  no permite la acción. Revisa si el cuerpo trae `error` incluso con `200`.
+- **Click and collect.** Estos endpoints responden `404` con un `code` como `ORDER_NOT_FOUND`, y el cuerpo de su `500` es
+  `{"error": "unexpected_error", "timestamp": 1760000000}`.
+- **Creación de órdenes.** `POST /orders`, `POST /orders/create-and-ship` y `POST /brazil/orders` responden `500` con
+  `{"error": "unexpected error"}` y sin timestamp.
+- **Identificadores desconocidos.** Algunos endpoints responden `500` en lugar de `422` para un `store_id` o un `shipping_method_id` que
+  no existe. Revisa los identificadores antes de reintentar un `500`.
+
+## Errores inesperados
+
+```json
+{ "error": "unexpected error, timestamp: 1760000000" }
+```
+
+El timestamp identifica el fallo en los logs de Cubbo. Inclúyelo cuando escribas a
+[integraciones@cubbo.com](mailto:integraciones@cubbo.com).

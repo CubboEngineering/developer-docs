@@ -1,0 +1,144 @@
+---
+title: "Início rápido"
+description: "Autentique-se e crie seu primeiro pedido."
+---
+
+Este passo a passo leva você das credenciais até um pedido criado.
+
+## Pré-requisitos
+
+- Uma loja de testes. Fale com a equipe de suporte da Cubbo ou com o seu gerente de conta para criá-la. Faça este início rápido nela, nunca na sua conta de produção.
+- O `client_id` e o `client_secret` de uma integração Open API criada no app da Cubbo. Veja [Configure sua integração](/pt-BR/guides/setup).
+- O `store_id` da sua loja de teste. O app o mostra em **Lojas Autorizadas** quando você cria a integração.
+- Pelo menos uma modalidade de envio configurada na integração. O nome dela é o `shipping_line_code` que você envia com o pedido.
+
+## Passos
+
+<Steps>
+  <Step title="Obtenha um token">
+    Troque suas credenciais por um bearer token. Os tokens duram até 24 horas (`expires_in`, em segundos).
+    Armazene o token em cache e reutilize-o até que expire: não solicite um novo a cada chamada.
+
+    ```bash
+    curl -X POST https://api.cubbo.com/v1/auth/token \
+      -H "Content-Type: application/json" \
+      -d '{
+        "client_id": "YOUR_CLIENT_ID",
+        "client_secret": "YOUR_CLIENT_SECRET",
+        "expires_in": 86400
+      }'
+    ```
+
+    ```json
+    {
+      "token": "<token>",
+      "expires_in": 86400,
+      "type": "Bearer"
+    }
+    ```
+  </Step>
+  <Step title="Crie um produto">
+    Cadastre o produto que você vai vender. Os `skus` e o código de barras (`upc`) devem ser únicos na loja. Envie o
+    peso e as dimensões para que a Cubbo escolha a embalagem certa e cote o frete. Gramas são convertidos em
+    quilogramas.
+
+    ```bash
+    curl -X POST https://api.cubbo.com/v1/products \
+      -H "Authorization: Bearer <token>" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "store_id": 1234,
+        "name": "Red T-shirt M",
+        "skus": ["SKU-RED-M"],
+        "upc": "7501234567890",
+        "price": 299.00,
+        "weight": 250,
+        "weight_unit": "g",
+        "length": 30,
+        "width": 25,
+        "height": 3,
+        "dimension_unit": "cm"
+      }'
+    ```
+
+    ```json
+    {
+      "id": 12345,
+      "name": "Red T-shirt M",
+      "bar_code": "7501234567890",
+      "is_kit": false,
+      "price": "299.0",
+      "weight": 0.25,
+      "product_codes": [{ "id": 9001, "sku": "SKU-RED-M" }]
+    }
+    ```
+
+    Todos os campos estão descritos em [Create a product](/api-reference/inventory/create-a-product).
+  </Step>
+  <Step title="Consulte o inventário">
+    Liste o inventário da loja e confirme que o SKU aparece.
+
+    ```bash
+    curl "https://api.cubbo.com/v1/inventory?store_id=1234&sku=SKU-RED-M" \
+      -H "Authorization: Bearer <token>"
+    ```
+
+    <Note>
+    Um produto novo não tem estoque até o armazém recebê-lo. Envie-o com um recebimento
+    (`POST /v1/replenishments`). Um pedido de um produto sem estoque fica em `backorder` até o estoque chegar.
+    </Note>
+  </Step>
+  <Step title="Crie um pedido">
+    Envie o endereço de entrega do comprador e os produtos a serem enviados. `order_number` é a sua própria referência e
+    deve ser único dentro da loja.
+
+    ```bash
+    curl -X POST https://api.cubbo.com/v1/orders \
+      -H "Authorization: Bearer <token>" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "store_id": 1234,
+        "order_number": "ORD-0001",
+        "shipping_line_code": "standard",
+        "shipping": {
+          "first_name": "Ana",
+          "last_name": "Pérez",
+          "phone": "+525512345678",
+          "email": "buyer@example.com",
+          "address1": "Av. Insurgentes Sur 1000",
+          "number": "1000",
+          "city": "Ciudad de México",
+          "province": "CDMX",
+          "zip_code": "03100",
+          "country": "MX"
+        },
+        "products": [
+          { "sku": "SKU-RED-M", "quantity": 2 }
+        ]
+      }'
+    ```
+
+    A resposta é o pedido criado, incluindo seu `id` na Cubbo e seu `status`.
+  </Step>
+  <Step title="Acompanhe o pedido">
+    Consulte periodicamente `GET /v1/orders?store_id=1234&order_number=ORD-0001` ou configure um
+    [webhook](/pt-BR/guides/webhooks) e deixe a Cubbo notificar você quando o pedido sair do armazém ou o status do envio mudar.
+  </Step>
+</Steps>
+
+## Próximos passos
+
+<CardGroup cols={2}>
+  <Card title="Autenticação" icon="key" href="/pt-BR/guides/authentication">
+    Validade do token, acesso às lojas e como as requisições não autorizadas falham.
+  </Card>
+  <Card title="Criar um pedido" icon="box" href="/api-reference/orders/create-an-order">
+    Todos os campos que você pode enviar com um pedido.
+  </Card>
+  <Card title="Erros" icon="triangle-exclamation" href="/pt-BR/guides/errors">
+    Códigos de status e o corpo do erro.
+  </Card>
+  <Card title="Webhooks" icon="bolt" href="/pt-BR/guides/webhooks">
+    Eventos, payloads e verificação de assinatura.
+  </Card>
+</CardGroup>

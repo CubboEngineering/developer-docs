@@ -1,0 +1,61 @@
+---
+title: "Paginación"
+description: "Cómo los endpoints de listado recorren los resultados por páginas."
+---
+
+Los endpoints de listado se paginan con los
+parámetros de query `page` y `per_page` y regresan un objeto `meta` junto a los resultados.
+
+```bash
+curl "https://api.cubbo.com/v1/orders?store_id=1234&page=2&per_page=50" \
+  -H "Authorization: Bearer <token>"
+```
+
+```json
+{
+  "orders": [ "..." ],
+  "meta": {
+    "current_page": 2,
+    "next_page": 3,
+    "prev_page": 1,
+    "total_pages": 7,
+    "first_page": false,
+    "last_page": false,
+    "per_page": 50,
+    "total_count": 312
+  }
+}
+```
+
+| Campo | Significado |
+|---|---|
+| `current_page` | La página que solicitaste. Las páginas empiezan en 1. |
+| `next_page` / `prev_page` | Números de página a solicitar después, o `null` en cualquiera de los extremos. |
+| `total_pages` | Número total de páginas con este `per_page`. |
+| `first_page` / `last_page` | Booleanos, útiles para detener un ciclo. |
+| `per_page` | El tamaño de página que realmente se aplicó. Si pides más que el máximo del endpoint, se aplica el máximo. |
+| `total_count` | Total de filas que coinciden. |
+
+Cada endpoint tiene su propio tamaño de página y llave de respuesta:
+
+| Endpoint | Llave de filas | `per_page` predeterminado | `per_page` máximo |
+|---|---|---|---|
+| `GET /orders` | `orders` | 10 | 100, los valores mayores se reducen a 100 |
+| `GET /orders/with-fields` | `orders` | 10 | 100, los valores mayores regresan `422` |
+| `GET /orders/awaiting-invoice` | `orders` | 10 | 100, los valores mayores regresan `422` |
+| `GET /returns/awaiting-invoice` | `returns` | 10 | 100, los valores mayores regresan `422` |
+| `GET /inventory` | `products` | 10 | 200, los valores mayores regresan `422` |
+| `GET /lots` | `lots` | 25 | 200, los valores mayores regresan `422` |
+
+<Note>
+`GET /orders` no tiene un orden predeterminado. Envía siempre `sort_by` y `sort` cuando lo recorras por páginas, o las filas pueden
+moverse entre páginas.
+</Note>
+
+## Cómo iterar de forma segura
+
+- Detente cuando `last_page` sea `true` o `next_page` sea `null`, en lugar de comparar `current_page` con `total_pages`.
+- Usa un orden estable (`sort_by` más `sort`, donde el endpoint lo admita) cuando recorras datos que
+  cambian mientras los lees, y filtra por un rango de fechas (`channel_created_at`, `shipping_date`) para mantener
+  acotado el conjunto.
+- Para sincronización casi en tiempo real, prefiere los [webhooks](/es/guides/webhooks) en lugar de consultar cada página periódicamente.

@@ -1,53 +1,171 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Mintlify Starter Kit",
+  "name": "Cubbo Developers",
+  "description": "Developer documentation for the Cubbo Clients API: orders, inventory, replenishments, returns, shipping and webhooks.",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#327cfb",
+    "light": "#60a5fa",
+    "dark": "#327cfb"
   },
   "favicon": "/favicon.svg",
-  "navigation": {
-    "pages": [
-      {
-        "group": "Getting Started",
-        "pages": [
-          "index",
-          "quickstart"
-        ]
-      }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
   "logo": {
     "light": "/logo/light.svg",
     "dark": "/logo/dark.svg"
   },
+  "navigation": {
+    "languages": [
+      {
+        "language": "en",
+        "default": true,
+        "tabs": [
+          {
+            "tab": "Guides",
+            "groups": [
+              {
+                "group": "Getting started",
+                "pages": [
+                  "index",
+                  "guides/setup",
+                  "quickstart",
+                  "guides/authentication"
+                ]
+              },
+              {
+                "group": "Working with the API",
+                "pages": [
+                  "guides/errors",
+                  "guides/pagination",
+                  "guides/rate-limits"
+                ]
+              },
+              {
+                "group": "Events",
+                "pages": [
+                  "guides/webhooks"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "API reference",
+            "openapi": "openapi.yaml"
+          }
+        ]
+      },
+      {
+        "language": "es",
+        "tabs": [
+          {
+            "tab": "Guías",
+            "groups": [
+              {
+                "group": "Primeros pasos",
+                "pages": [
+                  "es/index",
+                  "es/guides/setup",
+                  "es/quickstart",
+                  "es/guides/authentication"
+                ]
+              },
+              {
+                "group": "Uso de la API",
+                "pages": [
+                  "es/guides/errors",
+                  "es/guides/pagination",
+                  "es/guides/rate-limits"
+                ]
+              },
+              {
+                "group": "Eventos",
+                "pages": [
+                  "es/guides/webhooks"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Referencia de la API",
+            "openapi": "openapi.yaml"
+          }
+        ],
+        "navbar": {
+          "links": [
+            {
+              "label": "Cubbo",
+              "href": "https://cubbo.com"
+            }
+          ],
+          "primary": {
+            "type": "button",
+            "label": "Obtener credenciales",
+            "href": "https://app.cubbo.com/stores"
+          }
+        }
+      },
+      {
+        "language": "pt-BR",
+        "tabs": [
+          {
+            "tab": "Guias",
+            "groups": [
+              {
+                "group": "Primeiros passos",
+                "pages": [
+                  "pt-BR/index",
+                  "pt-BR/guides/setup",
+                  "pt-BR/quickstart",
+                  "pt-BR/guides/authentication"
+                ]
+              },
+              {
+                "group": "Uso da API",
+                "pages": [
+                  "pt-BR/guides/errors",
+                  "pt-BR/guides/pagination",
+                  "pt-BR/guides/rate-limits"
+                ]
+              },
+              {
+                "group": "Eventos",
+                "pages": [
+                  "pt-BR/guides/webhooks"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Referência da API",
+            "openapi": "openapi.yaml"
+          }
+        ],
+        "navbar": {
+          "links": [
+            {
+              "label": "Cubbo",
+              "href": "https://cubbo.com"
+            }
+          ],
+          "primary": {
+            "type": "button",
+            "label": "Obter credenciais",
+            "href": "https://app.cubbo.com/stores"
+          }
+        }
+      }
+    ]
+  },
   "navbar": {
     "links": [
       {
-        "label": "Support",
-        "href": "mailto:support@mintlify.com"
+        "label": "Cubbo",
+        "href": "https://cubbo.com"
       }
     ],
     "primary": {
       "type": "button",
-      "label": "Dashboard",
-      "href": "https://app.mintlify.com"
+      "label": "Get credentials",
+      "href": "https://app.cubbo.com/stores"
     }
   },
   "contextual": {
@@ -56,7 +174,6 @@
       "view",
       "chatgpt",
       "claude",
-      "perplexity",
       "mcp",
       "cursor",
       "vscode"
@@ -64,9 +181,19 @@
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "linkedin": "https://www.linkedin.com/company/cubbo"
     }
+  },
+  "background": {
+    "color": {
+      "light": "#f3f4f6",
+      "dark": "#0b1229"
+    }
+  },
+  "styling": {
+    "codeblocks": "dark"
+  },
+  "appearance": {
+    "default": "light"
   }
 }

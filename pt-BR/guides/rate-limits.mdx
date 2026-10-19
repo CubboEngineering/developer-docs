@@ -1,0 +1,37 @@
+---
+title: "Limites de requisições"
+description: "Limites de requisições por conta de API e como as requisições limitadas são respondidas."
+---
+
+Os limites se aplicam por conta de API (`client_id`), não por endereço IP, então alternar IPs não os aumenta.
+
+| Escopo | Limite |
+|---|---|
+| `POST /v1/auth/token` | 60 requisições por minuto por `client_id` |
+| Todos os outros endpoints `/v1/*`, somados | 600 requisições por minuto por `client_id` |
+
+Uma segunda proteção, por IP, se aplica na borda da rede a `POST /v1/auth/token`: mais de 30 solicitações de token
+em 30 segundos a partir de um mesmo endereço IP retornam `429` com o corpo vazio e bloqueiam esse endereço por 10 minutos.
+
+## Resposta limitada
+
+Quando um limite é excedido, a API responde `429` com um header `Retry-After` (em segundos) e o corpo de erro habitual:
+
+```http
+HTTP/1.1 429 Too Many Requests
+Content-Type: application/json
+Retry-After: 60
+
+{ "error": "Too many requests. Please slow down and try again later." }
+```
+
+## Como ficar abaixo do limite
+
+- Armazene o bearer token em cache durante toda a sua validade (até 24 horas). Solicitar um token a cada chamada é a causa mais
+  comum de limitação.
+- Use [webhooks](/pt-BR/guides/webhooks) para saber sobre mudanças em pedidos, envios, inventário e recebimentos (replenishment) em vez de
+  consultar listas periodicamente.
+- Quando precisar consultar periodicamente, use os filtros de data e um `per_page` próximo do máximo do endpoint, e distribua as
+  chamadas ao longo do minuto.
+- Ao receber `429`, aguarde o `Retry-After` e tente novamente com backoff. Não tente novamente em um loop apertado; o contador continua
+  aumentando enquanto você faz isso.
