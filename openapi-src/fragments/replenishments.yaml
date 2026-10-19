@@ -568,6 +568,8 @@ paths:
 
   /replenishments/attach-external-invoice:
     post:
+      # Hidden from the public docs until product approves it. Remove x-excluded to publish.
+      x-excluded: true
       tags: [Replenishments]
       operationId: attachReplenishmentExternalInvoice
       summary: Attach an externally issued NF-e to a replenishment

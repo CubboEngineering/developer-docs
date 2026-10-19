@@ -3324,8 +3324,8 @@ components:
             - string
             - "null"
           description: >-
-            Direction of the operation. `OUTGOING`/`INCOMING` for invoices attached through
-            attach-external-invoice; `SAIDA`/`ENTRADA` as sent to attach-invoice.
+            Direction of the operation, as sent when the invoice was attached: `SAIDA`/`ENTRADA` or
+            `OUTGOING`/`INCOMING`.
           example: OUTGOING
         key:
           type:
@@ -11143,8 +11143,7 @@ paths:
         that were issued for this order through Cubbo's fiscal integration. Cubbo then fetches the
         authorized XML and DANFE for each invoice from the fiscal provider and attaches them to the order so
         the warehouse can print them and ship. Use this when your store issues NF-e through Cubbo's
-        integrated fiscal provider and you need to tell Cubbo which invoices belong to the order. If your own
-        ERP issues the NF-e, use `POST /orders/attach-external-invoice` instead.
+        integrated fiscal provider and you need to tell Cubbo which invoices belong to the order.
 
         - The order must be in `pending`, `processing`, `picking` or `packing`; otherwise the request is
           rejected with 422.
@@ -11685,6 +11684,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
   /orders/attach-external-invoice:
     post:
+      x-excluded: true
       tags:
         - Orders
       operationId: attachExternalOrderInvoice
@@ -11852,7 +11852,7 @@ paths:
 
         have an approved NF-e, so your fiscal system can issue the invoice and attach it with
 
-        `POST /orders/attach-external-invoice` or `POST /orders/{order_id}/attach-invoice`. Each order
+        `POST /orders/{order_id}/attach-invoice`. Each order
 
         includes its lines, the picked quantities per lot and the replenishment invoices those lots came
 
@@ -13903,6 +13903,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
   /replenishments/attach-external-invoice:
     post:
+      x-excluded: true
       tags:
         - Replenishments
       operationId: attachReplenishmentExternalInvoice
@@ -14779,6 +14780,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
   /returns/attach-external-invoice:
     post:
+      x-excluded: true
       tags:
         - Returns
       operationId: attachReturnExternalInvoice

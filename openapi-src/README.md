@@ -32,3 +32,15 @@ explicit `security` key (use `security: []` for public endpoints).
 - Fragments contain only `paths`, `webhooks` and `components`. Schema names are unique across fragments.
 - Every value comes from `platform` `origin/main`: routes, controllers (`param!`), serializers and request specs.
 - Fake data only in examples. No internal class, worker, table or feature-flag names.
+
+## Hidden operations
+
+An operation that exists in the API but is not public yet stays documented in its fragment with
+`x-excluded: true` (and a comment saying why). Mintlify then leaves it out of the site. To publish it, remove
+those two lines and rebuild. Do not link hidden operations from public pages.
+
+Currently hidden, pending product approval:
+
+- `POST /orders/attach-external-invoice`
+- `POST /returns/attach-external-invoice`
+- `POST /replenishments/attach-external-invoice`

@@ -597,6 +597,8 @@ paths:
 
   /returns/attach-external-invoice:
     post:
+      # Hidden from the public docs until product approves it. Remove x-excluded to publish.
+      x-excluded: true
       tags: [Returns]
       operationId: attachReturnExternalInvoice
       summary: Upload an inbound NF-e issued outside Cubbo for a return (Brazil)

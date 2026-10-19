@@ -556,8 +556,7 @@ paths:
         that were issued for this order through Cubbo's fiscal integration. Cubbo then fetches the
         authorized XML and DANFE for each invoice from the fiscal provider and attaches them to the order so
         the warehouse can print them and ship. Use this when your store issues NF-e through Cubbo's
-        integrated fiscal provider and you need to tell Cubbo which invoices belong to the order. If your own
-        ERP issues the NF-e, use `POST /orders/attach-external-invoice` instead.
+        integrated fiscal provider and you need to tell Cubbo which invoices belong to the order.
 
         - The order must be in `pending`, `processing`, `picking` or `packing`; otherwise the request is
           rejected with 422.
@@ -700,6 +699,8 @@ paths:
 
   /orders/attach-external-invoice:
     post:
+      # Hidden from the public docs until product approves it. Remove x-excluded to publish.
+      x-excluded: true
       tags: [Orders]
       operationId: attachExternalOrderInvoice
       summary: Attach an NF-e issued by your own system
@@ -828,7 +829,7 @@ paths:
       description: |
         Brazil only. Returns the orders of a store that have been picked (or are about to be) and do not yet
         have an approved NF-e, so your fiscal system can issue the invoice and attach it with
-        `POST /orders/attach-external-invoice` or `POST /orders/{order_id}/attach-invoice`. Each order
+        `POST /orders/{order_id}/attach-invoice`. Each order
         includes its lines, the picked quantities per lot and the replenishment invoices those lots came
         from, which lets you reference the inbound NF-e on the outbound one.
 
@@ -1278,7 +1279,7 @@ components:
         invoiceable_id: {type: integer, description: "ID of the order the invoice belongs to.", example: 987654}
         invoiceable_type: {type: string, description: "Type of the document the invoice belongs to; `Order` here.", example: Order}
         operation_nature: {type: [string, 'null'], description: "Nature of the operation (natureza da operacao).", example: Venda de mercadoria}
-        operation_type: {type: [string, 'null'], description: "Direction of the operation. `OUTGOING`/`INCOMING` for invoices attached through attach-external-invoice; `SAIDA`/`ENTRADA` as sent to attach-invoice.", example: OUTGOING}
+        operation_type: {type: [string, 'null'], description: "Direction of the operation, as sent when the invoice was attached: `SAIDA`/`ENTRADA` or `OUTGOING`/`INCOMING`.", example: OUTGOING}
         key: {type: [string, 'null'], description: "The 44-digit NF-e access key.", example: '00000000000000000000000000000000000000000000'}
         xml_file:
           oneOf:
