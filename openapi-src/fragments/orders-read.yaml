@@ -1,0 +1,1594 @@
+paths:
+  /orders:
+    get:
+      tags: [Orders]
+      operationId: listOrders
+      summary: List orders
+      description: |
+        Returns a paginated list of a store's orders with their order lines, invoices (NF-e, Brazil only),
+        shipping method, delivery tracking and, optionally, the order's event history. Use it to sync order
+        status and tracking into your own systems. Filter by status, order type, order number, buyer email
+        or date ranges.
+
+        - Results are paginated: `page` (default 1) and `per_page` (default 10, capped at 100). The `meta`
+          object tells you whether more pages exist.
+        - Filtering `status` by `processing` also returns orders in `picking` and `packing`, since all three
+          mean "being prepared in the warehouse".
+        - `order_number` accepts a single string or an array of strings (`order_number[]=ORD-0001&order_number[]=ORD-0002`).
+          When you filter by order number, stock units of products that use unit codes also expose their
+          `unit_code` while the order is `packing` or `shipped`.
+        - `sort_by` accepts any order field (for example `created_at`, `channel_created_at`, `shipping_date`,
+          `updated_at`), or `shipping_methods.<field>` / `stores.<field>`; an unknown field returns 422
+          `Field not found`. `sort` is `desc` unless you pass `asc`. Without `sort_by` the order of results is not guaranteed.
+        - `include_event_history=true` adds `order_histories` to every order (status changes, tracking
+          updates and incidents).
+        - `is_b2b` is only present for stores that handle both B2B and D2C orders.
+        - Each order in this list carries the subset of `Order` fields listed in the response schema
+          description; the full `Order` object is returned by the create and update endpoints.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: store_id
+          in: query
+          required: true
+          schema: {type: integer}
+          description: ID of the store whose orders you want to list.
+          example: 1234
+        - name: status
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: {$ref: '#/components/schemas/OrderStatus'}
+          description: Only return orders in these statuses. `processing` implicitly includes `picking` and `packing`.
+          example: [pending, processing]
+        - name: order_type
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: {$ref: '#/components/schemas/OrderType'}
+          description: Only return orders of these types.
+          example: [SALE]
+        - name: order_number
+          in: query
+          required: false
+          schema:
+            oneOf:
+              - type: string
+              - type: array
+                items: {type: string}
+          description: Exact order number, or an array of order numbers. Enables `unit_code` exposure on stock units.
+          example: ORD-0001
+        - name: shipping_email
+          in: query
+          required: false
+          schema: {type: string}
+          description: Case-insensitive partial match on the buyer's shipping email.
+          example: buyer@example.com
+        - name: shipping_date[from]
+          in: query
+          required: false
+          schema: {type: string, format: date-time}
+          description: Lower bound of the shipping date range. Required when `shipping_date[to]` is sent.
+          example: '2026-01-01T00:00:00Z'
+        - name: shipping_date[to]
+          in: query
+          required: false
+          schema: {type: string, format: date-time}
+          description: Upper bound of the shipping date range. Required when `shipping_date[from]` is sent.
+          example: '2026-01-31T23:59:59Z'
+        - name: channel_created_at[from]
+          in: query
+          required: false
+          schema: {type: string, format: date-time}
+          description: Lower bound of the range on the date the order was created in the sales channel. Required when `channel_created_at[to]` is sent.
+          example: '2026-01-01T00:00:00Z'
+        - name: channel_created_at[to]
+          in: query
+          required: false
+          schema: {type: string, format: date-time}
+          description: Upper bound of the range on the date the order was created in the sales channel. Required when `channel_created_at[from]` is sent.
+          example: '2026-01-31T23:59:59Z'
+        - name: sort_by
+          in: query
+          required: false
+          schema: {type: string}
+          description: Field to sort by. Any order field, or `shipping_methods.<field>` / `stores.<field>`. Unknown fields return 422.
+          example: channel_created_at
+        - name: sort
+          in: query
+          required: false
+          schema: {type: string, enum: [asc, desc], default: desc}
+          description: Sort direction. Any value other than `asc` sorts descending.
+          example: desc
+        - name: page
+          in: query
+          required: false
+          schema: {type: integer, default: 1}
+          description: Page number, starting at 1.
+          example: 1
+        - name: per_page
+          in: query
+          required: false
+          schema: {type: integer, default: 10, maximum: 100}
+          description: Orders per page. Values above 100 are capped at 100.
+          example: 50
+        - name: include_event_history
+          in: query
+          required: false
+          schema: {type: boolean, default: false}
+          description: When true, each order includes `order_histories` with its status and tracking events.
+          example: false
+      responses:
+        '200':
+          description: Orders matching the filters, with pagination metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [orders, meta]
+                properties:
+                  orders:
+                    type: array
+                    description: |
+                      Orders on this page. Each item is an `Order` limited to: `id`, `store_id`, `order_number`, `status`,
+                      `channel_created_at`, `order_date`, `shipping_date`, `pending_at`, `shipping_email`, `shipping_status`,
+                      `is_paid`, `channel_order_id`, `channel_name`, `is_cod`, `cod_amount`, `has_carrier_insurance`,
+                      `requires_document_return`, `requires_pickup_on_delivery`, `currency`, `total_price`, `shipping`,
+                      `billing`, `delivery_tracking`, `return_shipping_labels`, `estimated_time_arrival`, `delivered_at`,
+                      `updated_at`, `is_click_and_collect`, `click_and_collect_metadata`, `latest_estimated_time_arrival_range`,
+                      `channel_shipping_line_code`, `warehouse_timezone`, `is_first_time_buyer`, `is_subscription_renewal`,
+                      `is_multi_package`, `is_b2b` (mixed B2B/D2C stores only), plus the associations `shipping_method`
+                      (`id`, `carrier_name`, `shipping_name`, `is_cod`), `order_lines` (`id`, `name`, `sku`, `quantity`,
+                      `generated`, `price_per_item`, `product`, `stock_units`), `invoices`, `store` (`id`, `name`),
+                      `channel_integration` (`id`, `channel_type_name`), `return`, `created_by_return` and, when
+                      `include_event_history=true`, `order_histories` (`new_status`, `incident_description`, `timestamp`, `origin`).
+                    items: {$ref: '#/components/schemas/Order'}
+                  meta: {$ref: '#/components/schemas/PaginationMeta'}
+              example:
+                orders:
+                  - id: 987654
+                    store_id: 1234
+                    order_number: ORD-0001
+                    status: shipped
+                    channel_created_at: '2026-01-10T14:02:11.000Z'
+                    order_date: '2026-01-10T14:02:11.000Z'
+                    shipping_date: '2026-01-11T18:30:00.000Z'
+                    pending_at: '2026-01-10T14:05:00.000Z'
+                    shipping_email: buyer@example.com
+                    shipping_status: shipment_in_transit
+                    is_paid: true
+                    channel_order_id: '5566778899'
+                    channel_name: shopify
+                    is_cod: false
+                    cod_amount: null
+                    has_carrier_insurance: false
+                    requires_document_return: false
+                    requires_pickup_on_delivery: false
+                    currency: MXN
+                    total_price: '899.00'
+                    shipping:
+                      first_name: Ana
+                      last_name: Example
+                      company: null
+                      phone: '+525500000000'
+                      address_1: Av. Ejemplo 123
+                      address_2: null
+                      email: buyer@example.com
+                      zip_code: '01000'
+                      country: MX
+                      state: CDMX
+                      city: Ciudad de Mexico
+                      number: '123'
+                      interior_number: null
+                      neighborhood: Centro
+                      references: Blue door
+                    billing:
+                      first_name: Ana
+                      last_name: Example
+                      company: null
+                      phone: '+525500000000'
+                      tax_id: null
+                      tax_regime: null
+                      state_registration: null
+                      address_1: Av. Ejemplo 123
+                      address_2: null
+                      number: '123'
+                      interior_number: null
+                      neighborhood: Centro
+                      email: buyer@example.com
+                      zip_code: '01000'
+                      country: MX
+                      state: CDMX
+                      city: Ciudad de Mexico
+                    delivery_tracking:
+                      - shipping_number: TRK000000001
+                        tracking_url: 'https://carrier.example.com/track/TRK000000001'
+                        cubbo_tracking_url: 'https://tracking.example.com/orders/abc123'
+                        service_id: express
+                        shipping_status: shipment_in_transit
+                        package_index: 1
+                        total_packages: 1
+                    return_shipping_labels: []
+                    estimated_time_arrival: '2026-01-13T00:00:00.000Z'
+                    delivered_at: null
+                    updated_at: '2026-01-11T18:31:00.000Z'
+                    is_click_and_collect: false
+                    click_and_collect_metadata: null
+                    latest_estimated_time_arrival_range:
+                      range_begin: '2026-01-13T06:00:00.000Z'
+                      range_end: '2026-01-14T05:59:59.000Z'
+                    channel_shipping_line_code: standard
+                    warehouse_timezone: America/Mexico_City
+                    is_first_time_buyer: true
+                    is_subscription_renewal: false
+                    is_multi_package: false
+                    shipping_method:
+                      id: 42
+                      carrier_name: DHL
+                      shipping_name: DHL Express
+                      is_cod: false
+                    order_lines:
+                      - id: 5551
+                        name: Red T-shirt M
+                        sku: SKU-RED-M
+                        quantity: 2
+                        generated: false
+                        price_per_item: '449.5'
+                        product:
+                          id: 777
+                          name: Red T-shirt M
+                          billing_name: T-shirt
+                          description: null
+                          has_imei: false
+                          is_fragile: false
+                          is_kit: false
+                          bar_code: '7500000000001'
+                          is_dropshipping: false
+                          is_scannable: true
+                          price: '449.5'
+                          weight: 0.3
+                          product_codes:
+                            - id: 9001
+                              sku: SKU-RED-M
+                        stock_units:
+                          - id: 31001
+                          - id: 31002
+                    invoices: []
+                    store:
+                      id: 1234
+                      name: Example Store
+                    channel_integration:
+                      id: 55
+                      channel_type_name: shopify
+                    return: null
+                    created_by_return: null
+                meta:
+                  current_page: 1
+                  next_page: 2
+                  prev_page: null
+                  total_pages: 7
+                  first_page: true
+                  last_page: false
+                  per_page: 10
+                  total_count: 63
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              examples:
+                missingStore: {value: {error: "Parameter store_id is required"}}
+                invalidDate: {value: {error: "'abc' is not a valid DateTime"}}
+                unknownSortField: {value: {error: "Field not found: foo"}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /orders/with-fields:
+    get:
+      tags: [Orders]
+      operationId: listOrdersWithFields
+      summary: List orders with selected fields
+      description: |
+        A lighter version of `GET /orders`: returns only the order fields you ask for in `fields`, without
+        order lines, invoices or event history. Use it for high-volume polling (for example status or
+        tracking sync) where you do not need the full payload.
+
+        - `fields` is a list of `Order` field names. Values that are not in the allowed list are ignored; if
+          none of the requested fields is valid, or `fields` is omitted, every allowed field is returned.
+        - Allowed fields: `id`, `store_id`, `order_number`, `status`, `channel_created_at`, `order_date`,
+          `shipping_date`, `pending_at`, `shipping_email`, `shipping_status`, `is_paid`, `channel_order_id`,
+          `channel_name`, `is_cod`, `cod_amount`, `has_carrier_insurance`, `requires_document_return`,
+          `requires_pickup_on_delivery`, `currency`, `total_price`, `shipping`, `billing`,
+          `estimated_time_arrival`, `delivered_at`, `updated_at`, `is_click_and_collect`,
+          `click_and_collect_metadata`, `channel_shipping_line_code`, `warehouse_timezone`, `shipping_method`,
+          `is_multi_package`, `delivery_tracking`, `is_first_time_buyer`, `is_subscription_renewal`.
+        - `shipping_method` is the only association available; when requested it is returned with every
+          `OrderShippingMethod` field.
+        - Filters: `status` (exact values, no `processing` expansion), `order_type`, `shipping_email`
+          (partial match) and `normalized_shipping_phone_suffix` (the last digits of the buyer's phone,
+          at least 3 digits after removing non-digits).
+        - Sorting is restricted to `sort_by` in `id`, `order_date`, `channel_created_at`, `shipping_date`,
+          `updated_at` and `sort` in `asc`, `desc`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: store_id
+          in: query
+          required: true
+          schema: {type: integer}
+          description: ID of the store whose orders you want to list.
+          example: 1234
+        - name: fields
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              enum:
+                - id
+                - store_id
+                - order_number
+                - status
+                - channel_created_at
+                - order_date
+                - shipping_date
+                - pending_at
+                - shipping_email
+                - shipping_status
+                - is_paid
+                - channel_order_id
+                - channel_name
+                - is_cod
+                - cod_amount
+                - has_carrier_insurance
+                - requires_document_return
+                - requires_pickup_on_delivery
+                - currency
+                - total_price
+                - shipping
+                - billing
+                - estimated_time_arrival
+                - delivered_at
+                - updated_at
+                - is_click_and_collect
+                - click_and_collect_metadata
+                - channel_shipping_line_code
+                - warehouse_timezone
+                - shipping_method
+                - is_multi_package
+                - delivery_tracking
+                - is_first_time_buyer
+                - is_subscription_renewal
+          description: Fields to include in each order. Unknown values are ignored; omit to receive all allowed fields.
+          example: [id, order_number, status, shipping_status, delivery_tracking]
+        - name: status
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: {$ref: '#/components/schemas/OrderStatus'}
+          description: Only return orders in these statuses. Values outside the enum return 422.
+          example: [shipped]
+        - name: order_type
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: {$ref: '#/components/schemas/OrderType'}
+          description: Only return orders of these types. Values outside the enum return 422.
+          example: [SALE]
+        - name: shipping_email
+          in: query
+          required: false
+          schema: {type: string}
+          description: Case-insensitive partial match on the buyer's shipping email.
+          example: buyer@example.com
+        - name: normalized_shipping_phone_suffix
+          in: query
+          required: false
+          schema: {type: string, minLength: 3}
+          description: Match orders whose buyer phone ends with these digits. Non-digits are stripped; at least 3 digits must remain.
+          example: '0000'
+        - name: sort_by
+          in: query
+          required: false
+          schema: {type: string, enum: [id, order_date, channel_created_at, shipping_date, updated_at]}
+          description: Field to sort by.
+          example: updated_at
+        - name: sort
+          in: query
+          required: false
+          schema: {type: string, enum: [asc, desc]}
+          description: Sort direction. Defaults to descending when `sort_by` is given.
+          example: desc
+        - name: page
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, default: 1}
+          description: Page number, starting at 1.
+          example: 1
+        - name: per_page
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 100, default: 10}
+          description: Orders per page.
+          example: 100
+      responses:
+        '200':
+          description: Orders with only the requested fields, plus pagination metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [orders, meta]
+                properties:
+                  orders:
+                    type: array
+                    description: Orders on this page, each limited to the requested `fields`.
+                    items: {$ref: '#/components/schemas/Order'}
+                  meta: {$ref: '#/components/schemas/PaginationMeta'}
+              example:
+                orders:
+                  - id: 987654
+                    order_number: ORD-0001
+                    status: shipped
+                    shipping_status: shipment_delivered
+                    delivery_tracking:
+                      - shipping_number: TRK000000001
+                        tracking_url: 'https://carrier.example.com/track/TRK000000001'
+                        cubbo_tracking_url: 'https://tracking.example.com/orders/abc123'
+                        service_id: express
+                        shipping_status: shipment_delivered
+                        package_index: 1
+                        total_packages: 1
+                meta:
+                  current_page: 1
+                  next_page: null
+                  prev_page: null
+                  total_pages: 1
+                  first_page: true
+                  last_page: true
+                  per_page: 100
+                  total_count: 1
+        '401':
+          description: Missing or invalid token, or the store does not exist / is not accessible with this token.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: {type: string, example: Unauthorized}
+                  message: {type: string, example: invalid store}
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              examples:
+                missingStore: {value: {error: "Parameter store_id is required"}}
+                invalidStatus: {value: {error: "Parameter status must be within [\"initial\", \"unpaid\", ...]"}}
+                invalidSortBy: {value: {error: "Parameter sort_by must be within [nil, \"id\", \"order_date\", \"channel_created_at\", \"shipping_date\", \"updated_at\"]"}}
+                perPageTooHigh: {value: {error: "Parameter per_page cannot be greater than 100"}}
+                shortPhoneSuffix: {value: {error: "Parameter normalized_shipping_phone_suffix must contain at least 3 digits"}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /orders/{order_id}/shipping-labels:
+    get:
+      tags: [Shipping labels]
+      operationId: listOrderShippingLabels
+      summary: List an order's shipping labels
+      description: |
+        Returns the valid shipping labels (carrier guides) generated for an order, including the label
+        PDF, the tracking number and tracking URLs. Use it to print labels or to look up tracking numbers
+        after the order has been packed.
+
+        - Only labels that are still valid are returned; labels that were cancelled or replaced are excluded.
+        - The prepaid return label that travels inside the package is never included. Other return-type
+          labels (`Return`, `Return By Carrier`) are included when they exist.
+        - Returns an empty array when the order has no labels yet (for example before packing).
+        - `label_file` is `{}` (an empty object) when the label PDF is not available; `billing_file` is `null`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          schema: {type: integer}
+          description: Cubbo ID of the order (the `id` field of `Order`, not the order number).
+          example: 987654
+      responses:
+        '200':
+          description: Shipping labels of the order.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ShippingLabel'}
+              example:
+                - id: 4401
+                  order_id: 987654
+                  shipping_number: TRK000000001
+                  label_type: Shipping
+                  tracking_url: 'https://carrier.example.com/track/TRK000000001'
+                  cubbo_tracking_url: 'https://tracking.example.com/orders/abc123'
+                  billing_file: null
+                  label_file:
+                    path: /rails/active_storage/blobs/redirect/example/label.pdf
+                    url: 'https://api.cubbo.com/rails/active_storage/blobs/redirect/example/label.pdf'
+                    filename: label.pdf
+                    byte_size: 48213
+                    content_type: application/pdf
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: The order does not exist or the parameter is invalid.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: {type: string}
+                  code: {type: [string, 'null']}
+                  context: {type: [object, 'null']}
+              examples:
+                notFound: {value: {error: "Couldn't find Order with 'id'=0", code: null, context: null}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /orders/{order_id}/attach-invoice:
+    post:
+      tags: [Orders]
+      operationId: attachOrderInvoice
+      summary: Attach NF-e invoices issued through Cubbo's fiscal integration
+      description: |
+        Brazil only. Registers one or more NF-e (Nota Fiscal Eletronica, the Brazilian electronic invoice)
+        that were issued for this order through Cubbo's fiscal integration. Cubbo then fetches the
+        authorized XML and DANFE for each invoice from the fiscal provider and attaches them to the order so
+        the warehouse can print them and ship. Use this when your store issues NF-e through Cubbo's
+        integrated fiscal provider and you need to tell Cubbo which invoices belong to the order. If your own
+        ERP issues the NF-e, use `POST /orders/attach-external-invoice` instead.
+
+        - The order must be in `pending`, `processing`, `picking` or `packing`; otherwise the request is
+          rejected with 422.
+        - Each invoice needs its 44-digit access key (`key`), the identifier you used when issuing it
+          (`identifier`), a `purpose`, the operation type (`SAIDA` outgoing / `ENTRADA` incoming) and the
+          operation nature (`operation_nature`, the CFOP description such as "Venda de mercadoria").
+        - Keys and identifiers must be unique within the request. If one of the keys already exists in
+          Cubbo, no new invoice is created: Cubbo refreshes the existing invoices from the fiscal provider
+          and responds with `update_invoice_ids` listing those keys.
+        - An identifier that already belongs to a non-cancelled invoice is rejected. Identifiers of
+          cancelled invoices can be reused.
+        - Invoices are created as `PREAPPROVED` and move to `APPROVED` once the fiscal provider confirms
+          them. Read their status in the `invoices` array of `GET /orders`.
+        - Only `invoice_type` `WEBMANIA` is accepted today.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          schema: {type: integer}
+          description: Cubbo ID of the order.
+          example: 987654
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [invoices]
+              properties:
+                invoice_type:
+                  type: string
+                  enum: [WEBMANIA]
+                  default: WEBMANIA
+                  description: Fiscal provider the invoices were issued with. Only `WEBMANIA` is supported.
+                  example: WEBMANIA
+                invoices:
+                  type: array
+                  minItems: 1
+                  description: Invoices to attach to the order.
+                  items:
+                    type: object
+                    required: [key, identifier, purpose, operation_type, operation_nature]
+                    properties:
+                      key:
+                        type: string
+                        pattern: '^[0-9]{44}$'
+                        description: The 44-digit NF-e access key (chave de acesso). Digits only.
+                        example: '00000000000000000000000000000000000000000000'
+                      identifier:
+                        type: string
+                        description: The identifier used when the invoice was issued with the fiscal provider. Must be unique.
+                        example: SALE987654
+                      purpose:
+                        type: string
+                        description: What the invoice documents. Replenishment and unidentified-return purposes are not accepted on orders.
+                        enum:
+                          - SALE_INVOICE
+                          - DONATION_INVOICE
+                          - SYMBOLIC_RETURN_INVOICE
+                          - DONATION_RETURN_INVOICE
+                          - RETURN_INVOICE
+                          - REMOVE_STOCK_INVOICE
+                          - REMOVE_DAMAGED_STOCK_INVOICE
+                          - REMOVE_EXPIRED_STOCK_INVOICE
+                          - REMOVE_LOST_STOCK_INVOICE
+                          - SHIPPING
+                          - SHIPPING_RETURN
+                          - SHIPPING_COMPLEMENT
+                          - SHIPPING_SERVICE
+                          - RETURN_REPLENISHMENT_INVOICE
+                          - CUSTOMER_RETURN_INVOICE
+                          - CUSTOMER_RETURN_REPLENISHMENT_INVOICE
+                          - REPLENISHMENT_POSITIVE_ADJUSTMENT_INVOICE
+                          - RETURN_REFUSAL_INVOICE
+                          - RETURN_REFUSAL_PARTIAL_INVOICE
+                          - VALUE_REDUCTION_INVOICE
+                          - EVENT_112130
+                          - EVENT_112150
+                          - EVENT_110111
+                          - EVENT_110110
+                        example: SALE_INVOICE
+                      operation_type:
+                        type: string
+                        enum: [SAIDA, ENTRADA]
+                        description: '`SAIDA` for outgoing (goods leaving the warehouse), `ENTRADA` for incoming.'
+                        example: SAIDA
+                      operation_nature:
+                        type: string
+                        description: Nature of the operation as printed on the NF-e (natureza da operacao).
+                        example: Venda de mercadoria
+            example:
+              invoice_type: WEBMANIA
+              invoices:
+                - key: '00000000000000000000000000000000000000000000'
+                  identifier: SALE987654
+                  purpose: SALE_INVOICE
+                  operation_type: SAIDA
+                  operation_nature: Venda de mercadoria
+      responses:
+        '200':
+          description: Invoices registered. `new_invoice_ids` holds the IDs of the invoices created; when every key already existed, it is empty and `update_invoice_ids` lists the keys that were refreshed instead.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [new_invoice_ids]
+                properties:
+                  new_invoice_ids:
+                    type: array
+                    items: {type: integer}
+                    description: IDs of the invoices created by this request.
+                    example: [7801]
+                  update_invoice_ids:
+                    type: string
+                    description: Comma-separated access keys of invoices that already existed and were refreshed. Only present when nothing new was created.
+                    example: '00000000000000000000000000000000000000000000'
+              examples:
+                created: {value: {new_invoice_ids: [7801]}}
+                alreadyExisted: {value: {new_invoice_ids: [], update_invoice_ids: '00000000000000000000000000000000000000000000'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: Validation or business error
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              examples:
+                missingInvoices: {value: {error: "Parameter invoices is required"}}
+                badKey: {value: {error: "Parameter key must contain numbers only"}}
+                invalidPurpose: {value: {error: "Parameter purpose must be within [\"SYMBOLIC_RETURN_INVOICE\", \"SALE_INVOICE\", ...]"}}
+                unsupportedType: {value: {error: "only WEBMANIA is supported for now"}}
+                invalidStatus: {value: {error: "order id 987654 is not in a valid status: shipped"}}
+                duplicateIdentifiers: {value: {error: "duplicate invoice identifiers provided: [\"SALE987654\"]"}}
+                duplicateKeys: {value: {error: "duplicate invoice keys provided: [\"00000000000000000000000000000000000000000000\"]"}}
+                identifierExists: {value: {error: "some identifiers provided already exist: [\"SALE987654\"]"}}
+                orderNotFound: {value: {error: "Couldn't find Order with 'id'=0"}}
+                fiscalProviderError: {value: {error: "WebmaniaError: <message from the fiscal provider>"}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /orders/attach-external-invoice:
+    post:
+      tags: [Orders]
+      operationId: attachExternalOrderInvoice
+      summary: Attach an NF-e issued by your own system
+      description: |
+        Brazil only. Uploads an NF-e (Nota Fiscal Eletronica) that your own ERP or fiscal system already
+        issued and had authorized by SEFAZ, and attaches it to the order. Cubbo stores the XML, generates the
+        DANFE (the printable invoice) and, for sale orders of stores enrolled in DIFAL, starts the
+        interstate-tax (DIFAL) payment-slip process. Use this when you issue invoices outside Cubbo; if you
+        issue them through Cubbo's fiscal integration, use `POST /orders/{order_id}/attach-invoice` instead.
+
+        - Identify the order with exactly one of `order_id` or `order_number`. Both are looked up only
+          among the stores your token can access. `order_number` must resolve to a single order.
+        - `invoice_xml` is the authorized, protocol-wrapped `nfeProc` XML, base64-encoded (a data-URI
+          prefix is accepted) or as the raw XML string. The access key embedded in the XML must match
+          `access_key`, and the XML must contain the `total/ICMSTot` section.
+        - The request is idempotent: if the order already has an approved sale (or donation) NF-e, that
+          invoice is returned and nothing new is created. A key that already exists on another document is
+          rejected.
+        - The invoice is stored as `APPROVED` with `invoice_type` `IOTA` and purpose `SALE_INVOICE`
+          (or the matching stock-removal purpose for removal orders).
+        - If another upload for the same order is still being processed, the API responds `202 Accepted`
+          with a `transaction_id`; retry after a few seconds.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [invoice_xml, access_key, invoice_number]
+              properties:
+                order_id:
+                  type: integer
+                  description: Cubbo ID of the order. Send either this or `order_number`, not both.
+                  example: 987654
+                order_number:
+                  type: string
+                  description: Your order number. Send either this or `order_id`, not both.
+                  example: ORD-0001
+                invoice_xml:
+                  type: string
+                  description: The authorized NF-e XML (`nfeProc`), base64-encoded or as raw XML.
+                  example: PD94bWwgdmVyc2lvbj0iMS4wIj8+PG5mZVByb2M+Li4uPC9uZmVQcm9jPg==
+                access_key:
+                  type: string
+                  pattern: '^[0-9]{44}$'
+                  description: The 44-digit NF-e access key. Must match the key inside `invoice_xml`.
+                  example: '00000000000000000000000000000000000000000000'
+                invoice_number:
+                  type: string
+                  description: The NF-e number (nNF).
+                  example: '123'
+                message:
+                  type: string
+                  description: Optional free-text note stored with the invoice (for example your system's status message).
+                  example: 'issued: awaiting danfe'
+                invoice_type:
+                  type: string
+                  enum: [IOTA]
+                  default: IOTA
+                  description: Source of the invoice. Only `IOTA` is accepted.
+                  example: IOTA
+            example:
+              order_id: 987654
+              access_key: '00000000000000000000000000000000000000000000'
+              invoice_number: '123'
+              invoice_xml: PD94bWwgdmVyc2lvbj0iMS4wIj8+PG5mZVByb2M+Li4uPC9uZmVQcm9jPg==
+      responses:
+        '200':
+          description: Invoice attached (or already attached) to the order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [invoice_id, key, status]
+                properties:
+                  invoice_id:
+                    type: integer
+                    description: ID of the invoice attached to the order.
+                    example: 7801
+                  key:
+                    type: string
+                    description: The NF-e access key.
+                    example: '00000000000000000000000000000000000000000000'
+                  status:
+                    type: string
+                    description: Invoice status; `APPROVED` for an authorized NF-e.
+                    example: APPROVED
+              example:
+                invoice_id: 7801
+                key: '00000000000000000000000000000000000000000000'
+                status: APPROVED
+        '202':
+          description: Another upload for this order is still being processed. Retry later.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: {type: string, example: "Accepted, another invoice attach for this order is still processing."}
+                  transaction_id: {type: string, example: tx-0001}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: Validation or business error. An order outside the stores your token can access is reported as not found.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              examples:
+                missingXml: {value: {error: "Parameter invoice_xml is required"}}
+                badAccessKey: {value: {error: "Parameter access_key must be the 44-digit NF-e access key"}}
+                noOrderReference: {value: {error: "provide either order_id or order_number"}}
+                bothOrderReferences: {value: {error: "provide only one of order_id or order_number"}}
+                orderNotFoundById: {value: {error: "no order found with order_id 0"}}
+                orderNotFoundByNumber: {value: {error: "no order found with order_number ORD-0000"}}
+                ambiguousOrderNumber: {value: {error: "multiple orders found with order_number ORD-0001; provide order_id instead"}}
+                keyMismatch: {value: {error: "access_key does not match the NF-e XML"}}
+                keyExists: {value: {error: "an invoice with key 00000000000000000000000000000000000000000000 already exists"}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /orders/awaiting-invoice:
+    get:
+      tags: [Orders]
+      operationId: listOrdersAwaitingInvoice
+      summary: List orders waiting for an NF-e
+      description: |
+        Brazil only. Returns the orders of a store that have been picked (or are about to be) and do not yet
+        have an approved NF-e, so your fiscal system can issue the invoice and attach it with
+        `POST /orders/attach-external-invoice` or `POST /orders/{order_id}/attach-invoice`. Each order
+        includes its lines, the picked quantities per lot and the replenishment invoices those lots came
+        from, which lets you reference the inbound NF-e on the outbound one.
+
+        - By default (`only_picked_orders=true`) only orders in `packing` are returned. With
+          `only_picked_orders=false`, orders in `pending`, `processing`, `picking` and `packing` are included.
+        - Orders are sorted by the time of their last status change, oldest first.
+        - Orders with an approved NF-e are excluded. Use `order_ids` to restrict the result to specific orders.
+        - `picked_sku_quantities` on each line groups the picked units by lot; `related_replenishments` on
+          each order lists the replenishment NF-e keys of those lots. Orders whose picked lot codes cannot be
+          parsed into a material code are omitted from the page (but still counted in `meta.total_count`).
+        - `integration_details` carries the raw sales-channel order for AnyMarket integrations and is
+          `null` otherwise.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: store_id
+          in: query
+          required: true
+          schema: {type: integer}
+          description: ID of the store.
+          example: 1234
+        - name: only_picked_orders
+          in: query
+          required: false
+          schema: {type: boolean, default: true}
+          description: When true only `packing` orders are returned; when false, `pending`, `processing`, `picking` and `packing`.
+          example: true
+        - name: order_ids
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: {type: integer}
+          description: Restrict the result to these order IDs.
+          example: [987654]
+        - name: page
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, default: 1}
+          description: Page number, starting at 1.
+          example: 1
+        - name: per_page
+          in: query
+          required: false
+          schema: {type: integer, maximum: 100, default: 10}
+          description: Orders per page.
+          example: 10
+      responses:
+        '200':
+          description: Orders awaiting an invoice, with pagination metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [orders, meta]
+                properties:
+                  orders:
+                    type: array
+                    items: {$ref: '#/components/schemas/OrderAwaitingInvoice'}
+                  meta: {$ref: '#/components/schemas/PaginationMeta'}
+              example:
+                orders:
+                  - id: 987654
+                    store_id: 1234
+                    order_number: ORD-0001
+                    status: packing
+                    order_type: SALE
+                    channel_created_at: '2026-01-10T14:02:11.000Z'
+                    order_date: '2026-01-10T14:02:11.000Z'
+                    shipping_date: null
+                    pending_at: '2026-01-10T14:05:00.000Z'
+                    shipping_email: buyer@example.com
+                    shipping_status: null
+                    is_paid: true
+                    channel_order_id: '5566778899'
+                    is_cod: false
+                    currency: BRL
+                    total_price: '199.9'
+                    discount_price: '0.0'
+                    buyer_shipping_price: '15.0'
+                    extra_fees_price: '0.0'
+                    shipping:
+                      first_name: Ana
+                      last_name: Example
+                      company: null
+                      phone: '+5511900000000'
+                      address_1: Rua Exemplo
+                      address_2: null
+                      email: buyer@example.com
+                      zip_code: 01000-000
+                      country: BR
+                      state: SP
+                      city: Sao Paulo
+                      number: '10'
+                      interior_number: null
+                      neighborhood: Centro
+                      references: null
+                    billing:
+                      first_name: Ana
+                      last_name: Example
+                      company: null
+                      phone: '+5511900000000'
+                      tax_id: 000.000.000-00
+                      tax_regime: null
+                      state_registration: null
+                      address_1: Rua Exemplo
+                      address_2: null
+                      number: '10'
+                      interior_number: null
+                      neighborhood: Centro
+                      email: buyer@example.com
+                      zip_code: 01000-000
+                      country: BR
+                      state: SP
+                      city: Sao Paulo
+                    integration_details: null
+                    order_lines:
+                      - id: 5551
+                        name: Red T-shirt M
+                        sku: SKU-RED-M
+                        quantity: 1
+                        generated: false
+                        price_per_item: '199.9'
+                        discount_per_item: '0.0'
+                        product:
+                          id: 777
+                          name: Red T-shirt M
+                          billing_name: T-shirt
+                          description: null
+                          has_imei: false
+                          is_fragile: false
+                          is_kit: false
+                          bar_code: '7890000000001'
+                          is_dropshipping: false
+                          is_scannable: true
+                          price: '199.9'
+                          weight: 0.3
+                          product_codes:
+                            - id: 9001
+                              sku: SKU-RED-M
+                        picked_sku_quantities:
+                          - lot_id: 301
+                            lot_sku: '123456'
+                            quantity: 1
+                            lot_unique_code: 123456-LOT01
+                            replenishment_invoice_key: '00000000000000000000000000000000000000000000'
+                            replenishment_id: 2201
+                    related_replenishments:
+                      - replenishment_id: 2201
+                        invoice_key: '00000000000000000000000000000000000000000000'
+                meta:
+                  current_page: 1
+                  next_page: null
+                  prev_page: null
+                  total_pages: 1
+                  first_page: true
+                  last_page: true
+                  per_page: 10
+                  total_count: 1
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              examples:
+                missingStore: {value: {error: "Parameter store_id is required"}}
+                storeNotFound: {value: {error: "Couldn't find Store with 'id'=0"}}
+                perPageTooHigh: {value: {error: "Parameter per_page cannot be greater than 100"}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+components:
+  schemas:
+    OrderStatus:
+      type: string
+      description: |
+        Fulfillment status of an order. `processing`, `picking` and `packing` all mean the order is being
+        prepared in the warehouse. `holded` means the order is on hold. `packed` is unused.
+      enum:
+        - initial
+        - unpaid
+        - empty
+        - pending
+        - error
+        - cancelation_window
+        - entirely_dropshipping
+        - backorder
+        - processing
+        - picking
+        - packing
+        - packed
+        - shipped
+        - canceled
+        - holded
+        - interrupted
+        - returned
+        - return_arrived
+        - returning
+        - reentered
+        - awaiting_fulfillment_request
+        - awaiting_dropoff
+        - arrived_at_warehouse
+      example: shipped
+
+    OrderShippingStatus:
+      type: string
+      description: Carrier-side status of the shipment, updated from tracking events. `null` until the carrier reports the first event.
+      enum:
+        - shipment_created
+        - awaiting_collection
+        - shipment_collected
+        - shipment_in_transit
+        - shipment_out_for_delivery
+        - shipment_delivered
+        - shipment_partially_delivered
+        - shipment_with_incident
+        - shipment_to_be_self_collected
+        - shipment_canceled
+        - shipment_returned
+        - shipment_not_defined
+      example: shipment_in_transit
+
+    OrderType:
+      type: string
+      description: |
+        Kind of order. `SALE` is a regular sale; `DONATION` ships goods without a sale; `REMOVE_STOCK`,
+        `REMOVE_DAMAGED_STOCK`, `REMOVE_EXPIRED_STOCK` and `REMOVE_LOST_STOCK` withdraw stock from the
+        warehouse; `STOCK_TRANSFER_OUT` moves stock to another store; `C2C` is a consumer-to-consumer
+        shipment created by Cubbo and cannot be created through the API.
+      enum:
+        - SALE
+        - DONATION
+        - REMOVE_STOCK
+        - REMOVE_DAMAGED_STOCK
+        - REMOVE_EXPIRED_STOCK
+        - REMOVE_LOST_STOCK
+        - STOCK_TRANSFER_OUT
+        - C2C
+      example: SALE
+
+    OrderAddress:
+      type: object
+      description: Shipping contact and address of an order.
+      properties:
+        first_name: {type: [string, 'null'], description: "Recipient first name.", example: Ana}
+        last_name: {type: [string, 'null'], description: "Recipient last name.", example: Example}
+        company: {type: [string, 'null'], description: "Company name, if any.", example: null}
+        phone: {type: [string, 'null'], description: "Recipient phone number.", example: '+525500000000'}
+        address_1: {type: [string, 'null'], description: "Street address line 1.", example: Av. Ejemplo 123}
+        address_2: {type: [string, 'null'], description: "Street address line 2.", example: null}
+        email: {type: [string, 'null'], description: "Recipient email.", example: buyer@example.com}
+        zip_code: {type: [string, 'null'], description: "Postal code.", example: '01000'}
+        country: {type: [string, 'null'], description: "Two-letter country code.", example: MX}
+        state: {type: [string, 'null'], description: "State or province.", example: CDMX}
+        city: {type: [string, 'null'], description: "City.", example: Ciudad de Mexico}
+        number: {type: [string, 'null'], description: "Street number.", example: '123'}
+        interior_number: {type: [string, 'null'], description: "Apartment or interior number.", example: null}
+        neighborhood: {type: [string, 'null'], description: "Neighborhood (colonia / bairro).", example: Centro}
+        references: {type: [string, 'null'], description: "Delivery references for the courier.", example: Blue door}
+
+    OrderBillingAddressDetails:
+      type: object
+      description: Billing contact, fiscal data and address of an order. Fiscal fields are returned in clear text to the store that owns the order.
+      properties:
+        first_name: {type: [string, 'null'], description: "Billing first name.", example: Ana}
+        last_name: {type: [string, 'null'], description: "Billing last name.", example: Example}
+        company: {type: [string, 'null'], description: "Company name, if any.", example: null}
+        phone: {type: [string, 'null'], description: "Billing phone number.", example: '+525500000000'}
+        tax_id: {type: [string, 'null'], description: "Tax ID of the buyer (CPF or CNPJ in Brazil, RFC in Mexico).", example: 000.000.000-00}
+        tax_regime: {type: [string, 'null'], description: "Buyer's tax regime, when provided.", example: null}
+        state_registration: {type: [string, 'null'], description: "State registration (inscricao estadual, Brazil).", example: null}
+        address_1: {type: [string, 'null'], description: "Street address line 1.", example: Av. Ejemplo 123}
+        address_2: {type: [string, 'null'], description: "Street address line 2.", example: null}
+        number: {type: [string, 'null'], description: "Street number.", example: '123'}
+        interior_number: {type: [string, 'null'], description: "Apartment or interior number.", example: null}
+        neighborhood: {type: [string, 'null'], description: "Neighborhood.", example: Centro}
+        email: {type: [string, 'null'], description: "Billing email.", example: buyer@example.com}
+        zip_code: {type: [string, 'null'], description: "Postal code.", example: '01000'}
+        country: {type: [string, 'null'], description: "Two-letter country code.", example: MX}
+        state: {type: [string, 'null'], description: "State or province.", example: CDMX}
+        city: {type: [string, 'null'], description: "City.", example: Ciudad de Mexico}
+
+    OrderDeliveryTrackingPackage:
+      type: object
+      description: Tracking information for one package of the order. When no label exists yet, a single entry with null tracking fields is returned.
+      properties:
+        shipping_number: {type: [string, 'null'], description: "Carrier tracking number of the package.", example: TRK000000001}
+        tracking_url: {type: [string, 'null'], description: "Carrier tracking page. For Cubbo pickup-point deliveries this is Cubbo's own tracking page.", example: 'https://carrier.example.com/track/TRK000000001'}
+        cubbo_tracking_url: {type: [string, 'null'], description: "Cubbo tracking page for the order.", example: 'https://tracking.example.com/orders/abc123'}
+        service_id: {type: [string, 'null'], description: "Carrier service used for the label.", example: express}
+        shipping_status:
+          oneOf:
+            - $ref: '#/components/schemas/OrderShippingStatus'
+            - type: 'null'
+          description: Shipping status of this package (falls back to the order's shipping status).
+        package_index: {type: integer, description: "1-based index of this package.", example: 1}
+        total_packages: {type: integer, description: "Total number of packages of the order.", example: 1}
+
+    OrderReturnShippingLabel:
+      type: object
+      description: A valid return label attached to the order.
+      properties:
+        shipping_number: {type: [string, 'null'], description: "Tracking number of the return label.", example: RTN000000001}
+        tracking_url: {type: [string, 'null'], description: "Carrier tracking page of the return label.", example: 'https://carrier.example.com/track/RTN000000001'}
+
+    OrderEtaRange:
+      type: object
+      description: Latest estimated delivery window, as UTC timestamps of the start and end of the day in the warehouse's time zone.
+      properties:
+        range_begin: {type: string, format: date-time, description: "Start of the estimated delivery window.", example: '2026-01-13T06:00:00.000Z'}
+        range_end: {type: string, format: date-time, description: "End of the estimated delivery window.", example: '2026-01-14T05:59:59.000Z'}
+
+    OrderProofOfDelivery:
+      type: object
+      description: Proof of delivery reported by the carrier. Present only for shipped, returning or returned orders that have one.
+      properties:
+        id: {type: integer, description: "Proof of delivery ID.", example: 3101}
+        recipient_name: {type: [string, 'null'], description: "Name of the person who received the package.", example: Ana Example}
+        recipient_relationship: {type: [string, 'null'], description: "Relationship of the receiver to the buyer, as reported by the carrier.", example: self}
+        format: {type: [string, 'null'], description: "Format of the proof files (for example `image`, `pdf`, `base64`).", example: image}
+        files:
+          type: [array, 'null']
+          description: Files attached to the proof, or null when there are none.
+          items:
+            type: object
+            properties:
+              path: {type: string, description: "Relative download path.", example: /rails/active_storage/blobs/redirect/example/pod.jpg}
+              filename: {type: string, description: "File name.", example: pod.jpg}
+              byte_size: {type: integer, description: "Size in bytes.", example: 120340}
+              content_type: {type: string, description: "MIME type.", example: image/jpeg}
+              thumbnail_path: {type: [string, 'null'], description: "Relative path of a 300x300 thumbnail; only for images.", example: /rails/active_storage/representations/example/pod.jpg}
+
+    OrderClickAndCollectMetadata:
+      type: object
+      description: |
+        Pickup-point information for click-and-collect orders. Keys depend on the carrier that operates
+        the pickup point (typically `name`, `address`, `zipcode`, `description`, `carrier_name`,
+        coordinates and a location ID). `pickup_codes` is keyed by package tracking number and holds the
+        short code and QR image the buyer presents at pickup. Internal fields are never included.
+      additionalProperties: true
+      properties:
+        name: {type: string, description: "Pickup point name.", example: Pickup point name}
+        address: {type: string, description: "Pickup point address.", example: Pickup point address}
+        zipcode: {type: string, description: "Pickup point postal code.", example: '01000'}
+        description: {type: string, description: "Human-readable description of the pickup point.", example: Punto fisico - Centro}
+        carrier_name: {type: string, description: "Carrier operating the pickup point.", example: ESTAFETA}
+        pickup_codes:
+          type: object
+          description: Pickup codes per package, keyed by the package tracking number.
+          additionalProperties:
+            type: object
+            properties:
+              pickup_short: {type: string, description: "Short pickup code.", example: AB12CD}
+              pickup_qr_image_url: {type: string, description: "URL of the QR image to present at pickup.", example: 'https://api.cubbo.com/rails/active_storage/blobs/redirect/example/pickup_qr.png'}
+
+    OrderStockUnit:
+      type: object
+      description: A physical unit assigned to an order line. In `GET /orders` only `id`, `imei` (when the product tracks IMEI) and `unit_code` (when requested by order number, for unit-code products in `packing`/`shipped`) are returned.
+      properties:
+        id: {type: integer, description: "Stock unit ID.", example: 31001}
+        status: {type: string, description: "Stock unit status.", example: PICKED}
+        product_id: {type: integer, description: "Product ID of the unit.", example: 777}
+        picked_at: {type: [string, 'null'], format: date-time, description: "When the unit was picked.", example: '2026-01-11T15:00:00.000Z'}
+        created_at: {type: string, format: date-time, description: "Creation time.", example: '2025-12-01T10:00:00.000Z'}
+        updated_at: {type: string, format: date-time, description: "Last update time.", example: '2026-01-11T15:00:00.000Z'}
+        imei:
+          type: object
+          description: IMEI of the unit, only for products that track IMEI.
+          properties:
+            id: {type: integer, description: "IMEI record ID.", example: 12}
+            imei: {type: string, description: "The IMEI number.", example: '000000000000000'}
+        unit_code: {type: string, description: "Serial / unit code of the unit, only for products that require unit codes and only when the request filters by `order_number`.", example: UC-0001}
+
+    OrderLineProduct:
+      type: object
+      description: Product of an order line. `GET /orders` and `GET /orders/awaiting-invoice` return the subset shown here.
+      properties:
+        id: {type: integer, description: "Product ID.", example: 777}
+        name: {type: string, description: "Product name.", example: Red T-shirt M}
+        billing_name: {type: [string, 'null'], description: "Name used on invoices.", example: T-shirt}
+        description: {type: [string, 'null'], description: "Product description (HTML).", example: null}
+        has_imei: {type: boolean, description: "Whether units of this product carry an IMEI.", example: false}
+        is_fragile: {type: boolean, description: "Whether the product needs fragile handling.", example: false}
+        is_kit: {type: boolean, description: "Whether the product is a kit of other products.", example: false}
+        bar_code: {type: [string, 'null'], description: "Barcode (UPC/EAN).", example: '7500000000001'}
+        is_dropshipping: {type: boolean, description: "Whether the product is fulfilled by a third party.", example: false}
+        is_scannable: {type: boolean, description: "Whether units are scanned during picking.", example: true}
+        price: {type: [string, 'null'], description: "Product price as a decimal string.", example: '449.5'}
+        weight: {type: [number, 'null'], description: "Product weight.", example: 0.3}
+        product_codes:
+          type: array
+          description: SKUs registered for the product.
+          items:
+            type: object
+            properties:
+              id: {type: integer, description: "Product code ID.", example: 9001}
+              sku: {type: string, description: "SKU.", example: SKU-RED-M}
+
+    OrderLine:
+      type: object
+      description: A line of an order (one SKU and its quantity).
+      properties:
+        id: {type: integer, description: "Order line ID.", example: 5551}
+        name: {type: [string, 'null'], description: "Product name at the time of the order.", example: Red T-shirt M}
+        sku: {type: [string, 'null'], description: "SKU ordered.", example: SKU-RED-M}
+        quantity: {type: integer, description: "Units ordered.", example: 2}
+        generated: {type: boolean, description: "True when Cubbo generated the line automatically (for example a kit component or a promotional insert).", example: false}
+        price_per_item: {type: [string, 'null'], description: "Unit price as a decimal string.", example: '449.5'}
+        discount_per_item: {type: [string, 'null'], description: "Unit discount as a decimal string.", example: '0.0'}
+        product:
+          oneOf:
+            - $ref: '#/components/schemas/OrderLineProduct'
+            - type: 'null'
+          description: The product behind the line, when included by the endpoint.
+        stock_units:
+          type: array
+          description: Physical units assigned to the line, when included by the endpoint.
+          items: {$ref: '#/components/schemas/OrderStockUnit'}
+
+    OrderInvoiceFile:
+      type: object
+      description: A downloadable invoice file.
+      properties:
+        path: {type: string, description: "Relative download path.", example: /rails/active_storage/blobs/redirect/example/nfe.xml}
+        filename: {type: string, description: "File name.", example: nfe.xml}
+        byte_size: {type: integer, description: "Size in bytes.", example: 10240}
+        content_type: {type: string, description: "MIME type.", example: application/xml}
+        url: {type: string, description: "Absolute download URL.", example: 'https://api.cubbo.com/rails/active_storage/blobs/redirect/example/nfe.xml'}
+
+    OrderInvoice:
+      type: object
+      description: An NF-e (Brazilian electronic invoice) attached to an order. Fiscal events (cancellations, corrections) are not listed; only the documents themselves.
+      properties:
+        id: {type: integer, description: "Invoice ID.", example: 7801}
+        invoice_type:
+          type: [string, 'null']
+          description: Where the invoice was issued. `WEBMANIA` and `BLING` are issued through Cubbo's fiscal integration; `IOTA` and `EXTERNAL` were issued by the client's own system; `WEBMANIA_CTE` / `WEBMANIA_NFSE` are transport and service documents.
+          enum: [WEBMANIA, SELIA_BR, WEBMANIA_CTE, WEBMANIA_NFSE, NATURA, BLING, IOTA, EXTERNAL, null]
+          example: WEBMANIA
+        status:
+          type: [string, 'null']
+          description: Fiscal status. `PREAPPROVED` means registered and awaiting confirmation from the fiscal provider.
+          enum: [APPROVED, REJECTED, CANCELLED, DENIED, PROCESSING, CONTINGENCY, PREAPPROVED, null]
+          example: APPROVED
+        invoiceable_id: {type: integer, description: "ID of the order the invoice belongs to.", example: 987654}
+        invoiceable_type: {type: string, description: "Type of the document the invoice belongs to; `Order` here.", example: Order}
+        operation_nature: {type: [string, 'null'], description: "Nature of the operation (natureza da operacao).", example: Venda de mercadoria}
+        operation_type: {type: [string, 'null'], description: "Direction of the operation. `OUTGOING`/`INCOMING` for invoices attached through attach-external-invoice; `SAIDA`/`ENTRADA` as sent to attach-invoice.", example: OUTGOING}
+        key: {type: [string, 'null'], description: "The 44-digit NF-e access key.", example: '00000000000000000000000000000000000000000000'}
+        xml_file:
+          oneOf:
+            - $ref: '#/components/schemas/OrderInvoiceFile'
+            - type: 'null'
+          description: The authorized NF-e XML, or null if not yet available.
+        pdf_file:
+          oneOf:
+            - $ref: '#/components/schemas/OrderInvoiceFile'
+            - type: 'null'
+          description: The DANFE (printable invoice) PDF, or null if not yet available.
+        label_pdf_file:
+          oneOf:
+            - $ref: '#/components/schemas/OrderInvoiceFile'
+            - type: 'null'
+          description: The DANFE in label format (DANFE etiqueta) PDF, or null if not available.
+
+    OrderHistoryEvent:
+      type: object
+      description: An event in the order timeline (status change, tracking update, incident). `GET /orders` with `include_event_history=true` returns only `new_status`, `incident_description`, `timestamp` and `origin`.
+      properties:
+        id: {type: integer, description: "Event ID.", example: 120001}
+        order_id: {type: integer, description: "Order ID.", example: 987654}
+        created_by_id: {type: [integer, 'null'], description: "ID of the user who triggered the event, if any.", example: null}
+        previous_status: {type: [string, 'null'], description: "Status before the event.", example: packing}
+        new_status: {type: [string, 'null'], description: "Status after the event (an order status or a shipping status).", example: shipped}
+        action: {type: [string, 'null'], description: "Kind of event (for example `order_status_update`, `tracking_update`, `cancel`).", example: order_status_update}
+        metadata: {type: [object, 'null'], description: "Additional event data.", example: {}}
+        origin:
+          type: [string, 'null']
+          description: Who or what produced the event.
+          enum: [cubbo, integration_webhook, shipping_webhook, tracking_watcher, cubbo_user, cubbo_user_import, cubbo_user_api, cubbo_business_rule, awaiting_client_invoice, homolog_invoice_precheck, cubbo_automation, tracking_app, system_auto_coverage_retry, zapier, integration_api, null]
+          example: shipping_webhook
+        reference_timestamp: {type: [string, 'null'], format: date-time, description: "When the event actually happened (for tracking events, the carrier's timestamp).", example: '2026-01-11T18:30:00.000Z'}
+        timestamp: {type: [string, 'null'], format: date-time, description: "Same as `reference_timestamp`.", example: '2026-01-11T18:30:00.000Z'}
+        incident_description: {type: [string, 'null'], description: "Carrier description of the incident; only when `new_status` is `shipment_with_incident`.", example: null}
+        difal_error_description: {type: [string, 'null'], description: "Error message(s) from the DIFAL guide issuer; only for DIFAL error events (Brazil).", example: null}
+        created_by_cubbo_user: {type: boolean, description: "True when the event was triggered by Cubbo staff rather than a user of your account.", example: false}
+        created_at: {type: string, format: date-time, description: "When the event was recorded.", example: '2026-01-11T18:31:00.000Z'}
+        updated_at: {type: string, format: date-time, description: "Last update of the event record.", example: '2026-01-11T18:31:00.000Z'}
+
+    OrderShippingMethod:
+      type: object
+      description: Shipping method (carrier + service) assigned to the order. `GET /orders` returns only `id`, `carrier_name`, `shipping_name` and `is_cod`.
+      properties:
+        id: {type: integer, description: "Shipping method ID.", example: 42}
+        shipping_name: {type: string, description: "Name of the shipping service.", example: DHL Express}
+        carrier_name: {type: string, description: "Carrier name as presented to your customers.", example: DHL}
+        capitalized_carrier: {type: [string, 'null'], description: "Carrier name with the first letter capitalized.", example: Dhl}
+        is_active: {type: boolean, description: "Whether the method is currently available.", example: true}
+        shipping_type: {type: [string, 'null'], description: "Coverage of the method.", enum: [national, international, pickup, null], example: national}
+        delivery_type: {type: [string, 'null'], description: "Service level.", enum: [SameDay, NextDay, Ground, Pickup, International, null], example: Ground}
+        country: {type: string, description: "Two-letter country code the method operates in.", example: MX}
+        is_cod: {type: boolean, description: "Whether the method supports cash on delivery.", example: false}
+        extended_zone: {type: boolean, description: "Whether the carrier delivers to extended zones.", example: true}
+        po_box_dropoff: {type: boolean, description: "Whether the carrier delivers to PO boxes.", example: true}
+        provides_pod: {type: boolean, description: "Whether the carrier provides proof of delivery.", example: false}
+        contract_provider: {type: [string, 'null'], description: "Carrier contract used.", example: null}
+        enable_multipackage: {type: boolean, description: "Whether multi-package shipments are enabled.", example: false}
+        non_working_days: {type: array, items: {type: integer}, description: "Weekdays the carrier does not operate (0 = Sunday).", example: [0, 6]}
+        dispatch_carrier_alias: {type: [string, 'null'], description: "Alias used at dispatch.", example: null}
+        handles_fragile: {type: boolean, description: "Whether the carrier handles fragile goods.", example: false}
+        multipackage_label_mode: {type: string, description: "How multi-package labels are produced.", enum: [per_package, bulk], example: bulk}
+        generates_label_per_package: {type: boolean, description: "Whether one label is generated per package.", example: false}
+        carrier_supports_per_box_label: {type: boolean, description: "Whether the carrier mints one label per box at packing. Not in use yet.", example: false}
+
+    OrderChannelIntegration:
+      type: object
+      description: The sales-channel integration the order came from. `GET /orders` returns `id` and `channel_type_name`.
+      properties:
+        id: {type: integer, description: "Integration ID.", example: 55}
+        channel_type_name: {type: string, description: "Sales channel type (for example `shopify`, `vtex`, `woocommerce`, `meli`, `openapi`).", example: shopify}
+
+    OrderStore:
+      type: object
+      description: Store the order belongs to.
+      properties:
+        id: {type: integer, description: "Store ID.", example: 1234}
+        name: {type: string, description: "Store name.", example: Example Store}
+
+    Order:
+      type: object
+      description: |
+        An order as returned by the Orders endpoints. Scalar fields are always available; associations
+        (`shipping_method`, `order_lines`, `invoices`, `store`, `channel_integration`, `return`,
+        `created_by_return`, `order_histories`) are present only when the endpoint includes them. Each
+        endpoint's response description lists the fields it returns.
+      properties:
+        id: {type: integer, description: "Cubbo ID of the order. Use it in path parameters.", example: 987654}
+        store_id: {type: integer, description: "Store ID.", example: 1234}
+        order_number: {type: string, description: "Your order number, unique within the store.", example: ORD-0001}
+        status: {$ref: '#/components/schemas/OrderStatus'}
+        channel_created_at: {type: string, format: date-time, description: "When the order was created in the sales channel.", example: '2026-01-10T14:02:11.000Z'}
+        order_date: {type: [string, 'null'], format: date-time, description: "Order date.", example: '2026-01-10T14:02:11.000Z'}
+        shipping_date: {type: [string, 'null'], format: date-time, description: "When the order was shipped.", example: '2026-01-11T18:30:00.000Z'}
+        pending_at: {type: [string, 'null'], format: date-time, description: "When the order became ready to be fulfilled.", example: '2026-01-10T14:05:00.000Z'}
+        shipping_email: {type: [string, 'null'], description: "Buyer email.", example: buyer@example.com}
+        shipping_address_1: {type: [string, 'null'], description: "Shipping street address line 1 (also inside `shipping`).", example: Av. Ejemplo 123}
+        shipping_status:
+          oneOf:
+            - $ref: '#/components/schemas/OrderShippingStatus'
+            - type: 'null'
+          description: Carrier-side status of the shipment.
+        is_paid: {type: boolean, description: "Whether the order is paid. Unpaid orders are not fulfilled.", example: true}
+        is_cod: {type: boolean, description: "Whether the order is cash on delivery.", example: false}
+        cod_amount: {type: [string, 'null'], description: "Amount to collect on delivery, as a decimal string.", example: null}
+        requires_document_return: {type: boolean, description: "Whether the carrier must bring back a signed document.", example: false}
+        requires_pickup_on_delivery: {type: boolean, description: "Whether the carrier must pick something up when delivering.", example: false}
+        has_carrier_insurance: {type: boolean, description: "Whether the shipment is insured with the carrier.", example: false}
+        has_missing_info: {type: boolean, description: "Whether the order is blocked because data is missing.", example: false}
+        missing_info: {type: [string, 'null'], description: "Description of the missing data, if any.", example: null}
+        currency: {type: [string, 'null'], description: "Currency code of the prices.", example: MXN}
+        total_price: {type: [string, 'null'], description: "Order total as a decimal string.", example: '899.00'}
+        discount_price: {type: [string, 'null'], description: "Total discount as a decimal string.", example: '0.00'}
+        buyer_shipping_price: {type: [string, 'null'], description: "Shipping price paid by the buyer, as a decimal string.", example: '0.00'}
+        extra_fees_price: {type: [string, 'null'], description: "Extra fees as a decimal string.", example: '0.0'}
+        is_pick_and_ship: {type: boolean, description: "Whether the order is a pick-and-ship order (you pick it up at the warehouse).", example: false}
+        pick_n_ship_status: {type: [string, 'null'], description: "Pick-and-ship status.", enum: [awaiting_pick_up, picked_up, in_warehouse, null], example: null}
+        is_b2b: {type: boolean, description: "Whether the order is a B2B order. In `GET /orders` only present for stores that handle both B2B and D2C.", example: false}
+        is_first_time_buyer: {type: boolean, description: "Whether this is the buyer's first order in the store.", example: true}
+        is_subscription_renewal: {type: boolean, description: "Whether the order is a subscription renewal.", example: false}
+        is_click_and_collect: {type: boolean, description: "Whether the buyer picks the order up at a pickup point.", example: false}
+        click_and_collect_metadata:
+          oneOf:
+            - $ref: '#/components/schemas/OrderClickAndCollectMetadata'
+            - type: 'null'
+          description: Pickup-point details for click-and-collect orders; null otherwise.
+        is_multi_package: {type: boolean, description: "Whether the shipment has more than one package.", example: false}
+        shipping: {$ref: '#/components/schemas/OrderAddress'}
+        billing: {$ref: '#/components/schemas/OrderBillingAddressDetails'}
+        delivery_tracking:
+          type: array
+          description: Tracking per package. Return labels are excluded.
+          items: {$ref: '#/components/schemas/OrderDeliveryTrackingPackage'}
+        return_shipping_labels:
+          type: [array, 'null']
+          description: Valid return labels of the order.
+          items: {$ref: '#/components/schemas/OrderReturnShippingLabel'}
+        proof_of_delivery:
+          oneOf:
+            - $ref: '#/components/schemas/OrderProofOfDelivery'
+            - type: 'null'
+          description: Proof of delivery, when the carrier provided one for a shipped or returned order.
+        estimated_time_arrival: {type: [string, 'null'], format: date-time, description: "Estimated delivery date.", example: '2026-01-13T00:00:00.000Z'}
+        latest_estimated_time_arrival_range:
+          oneOf:
+            - $ref: '#/components/schemas/OrderEtaRange'
+            - type: 'null'
+          description: Latest estimated delivery window, or null when no estimate exists.
+        delivered_at: {type: [string, 'null'], format: date-time, description: "When the carrier delivered the order.", example: null}
+        updated_at: {type: string, format: date-time, description: "Last update of the order.", example: '2026-01-11T18:31:00.000Z'}
+        channel_order_id: {type: [string, 'null'], description: "ID of the order in the sales channel.", example: '5566778899'}
+        channel_name: {type: [string, 'null'], description: "Name of the sales channel the order came from.", example: shopify}
+        channel_shipping_line_code: {type: [string, 'null'], description: "Code of the shipping option chosen at checkout in the sales channel (first shipping line).", example: standard}
+        warehouse_timezone: {type: [string, 'null'], description: "IANA time zone of the warehouse fulfilling the order.", example: America/Mexico_City}
+        shipping_method:
+          oneOf:
+            - $ref: '#/components/schemas/OrderShippingMethod'
+            - type: 'null'
+          description: Shipping method assigned to the order.
+        order_lines:
+          type: array
+          description: Lines of the order.
+          items: {$ref: '#/components/schemas/OrderLine'}
+        invoices:
+          type: array
+          description: NF-e documents attached to the order (Brazil).
+          items: {$ref: '#/components/schemas/OrderInvoice'}
+        store:
+          oneOf:
+            - $ref: '#/components/schemas/OrderStore'
+            - type: 'null'
+          description: Store the order belongs to.
+        channel_integration:
+          oneOf:
+            - $ref: '#/components/schemas/OrderChannelIntegration'
+            - type: 'null'
+          description: Sales-channel integration the order came from.
+        return:
+          oneOf:
+            - $ref: '#/components/schemas/OrderReturnSummary'
+            - type: 'null'
+          description: The return opened for this order, if any. Use `GET /returns/{return_id}` for the full return.
+        created_by_return:
+          oneOf:
+            - $ref: '#/components/schemas/OrderReturnSummary'
+            - type: 'null'
+          description: The return that created this order (for exchanges), if any.
+        order_histories:
+          type: array
+          description: Order timeline. Only returned by `GET /orders` with `include_event_history=true`.
+          items: {$ref: '#/components/schemas/OrderHistoryEvent'}
+
+    OrderReturnSummary:
+      type: object
+      description: |
+        Summary of a return embedded in an order (`return` / `created_by_return`). Only the fields below are
+        guaranteed; `GET /orders` may additionally embed the return's `returned_stock_units` (received units,
+        each with its `unit_code`) and, on `return`, the exchange order it created (`created_order`). Fetch
+        the full return with the Returns endpoints.
+      additionalProperties: true
+      properties:
+        id: {type: integer, description: "Return ID.", example: 501}
+        status: {type: string, description: "Return status.", example: pending}
+        return_type: {type: string, description: "Kind of return (for example a simple return or an exchange).", example: SIMPLE_RETURN}
+        notes: {type: [string, 'null'], description: "Notes attached to the return.", example: null}
+        created_at: {type: string, format: date-time, description: "When the return was created.", example: '2026-01-20T10:00:00.000Z'}
+        expected_products:
+          type: [array, 'null']
+          description: Products expected back, as product ID and quantity.
+          items:
+            type: object
+            properties:
+              product_id: {type: integer, description: "Product ID.", example: 777}
+              quantity: {type: integer, description: "Units expected.", example: 1}
+
+    OrderAwaitingInvoicePickedSku:
+      type: object
+      description: Picked units of an order line grouped by lot, with the replenishment NF-e the lot entered the warehouse with.
+      properties:
+        lot_id: {type: integer, description: "Lot ID.", example: 301}
+        lot_sku: {type: string, description: "Material code parsed from the lot code.", example: '123456'}
+        quantity: {type: integer, description: "Units picked from this lot for the line.", example: 1}
+        lot_unique_code: {type: string, description: "Full lot code.", example: 123456-LOT01}
+        replenishment_invoice_key: {type: [string, 'null'], description: "Access key of the replenishment NF-e that brought this lot in.", example: '00000000000000000000000000000000000000000000'}
+        replenishment_id: {type: [integer, 'null'], description: "Replenishment ID the lot came from.", example: 2201}
+
+    OrderAwaitingInvoice:
+      type: object
+      description: An order that has no approved NF-e yet, with the data needed to issue one.
+      properties:
+        id: {type: integer, description: "Cubbo ID of the order.", example: 987654}
+        store_id: {type: integer, description: "Store ID.", example: 1234}
+        order_number: {type: string, description: "Your order number.", example: ORD-0001}
+        status: {$ref: '#/components/schemas/OrderStatus'}
+        order_type: {$ref: '#/components/schemas/OrderType'}
+        channel_created_at: {type: string, format: date-time, description: "When the order was created in the sales channel.", example: '2026-01-10T14:02:11.000Z'}
+        order_date: {type: [string, 'null'], format: date-time, description: "Order date.", example: '2026-01-10T14:02:11.000Z'}
+        shipping_date: {type: [string, 'null'], format: date-time, description: "When the order was shipped.", example: null}
+        pending_at: {type: [string, 'null'], format: date-time, description: "When the order became ready to be fulfilled.", example: '2026-01-10T14:05:00.000Z'}
+        shipping_email: {type: [string, 'null'], description: "Buyer email.", example: buyer@example.com}
+        shipping_status:
+          oneOf:
+            - $ref: '#/components/schemas/OrderShippingStatus'
+            - type: 'null'
+          description: Carrier-side status of the shipment.
+        is_paid: {type: boolean, description: "Whether the order is paid.", example: true}
+        channel_order_id: {type: [string, 'null'], description: "ID of the order in the sales channel.", example: '5566778899'}
+        is_cod: {type: boolean, description: "Whether the order is cash on delivery.", example: false}
+        currency: {type: [string, 'null'], description: "Currency code.", example: BRL}
+        total_price: {type: [string, 'null'], description: "Order total as a decimal string.", example: '199.9'}
+        discount_price: {type: [string, 'null'], description: "Total discount as a decimal string.", example: '0.0'}
+        buyer_shipping_price: {type: [string, 'null'], description: "Shipping paid by the buyer, as a decimal string.", example: '15.0'}
+        extra_fees_price: {type: [string, 'null'], description: "Extra fees as a decimal string.", example: '0.0'}
+        shipping: {$ref: '#/components/schemas/OrderAddress'}
+        billing: {$ref: '#/components/schemas/OrderBillingAddressDetails'}
+        integration_details: {type: [object, 'null'], description: "Raw sales-channel order payload for AnyMarket integrations; null for every other channel.", example: null}
+        order_lines:
+          type: array
+          description: Order lines with their product and the picked quantities per lot.
+          items:
+            allOf:
+              - $ref: '#/components/schemas/OrderLine'
+              - type: object
+                properties:
+                  picked_sku_quantities:
+                    type: array
+                    description: Picked units grouped by lot.
+                    items: {$ref: '#/components/schemas/OrderAwaitingInvoicePickedSku'}
+        related_replenishments:
+          type: array
+          description: Replenishment NF-e keys of the lots picked for this order.
+          items:
+            type: object
+            properties:
+              replenishment_id: {type: integer, description: "Replenishment ID.", example: 2201}
+              invoice_key: {type: [string, 'null'], description: "Access key of the replenishment NF-e.", example: '00000000000000000000000000000000000000000000'}
+
+    ShippingLabelFile:
+      type: object
+      description: A downloadable label file.
+      properties:
+        path: {type: string, description: "Relative download path.", example: /rails/active_storage/blobs/redirect/example/label.pdf}
+        url: {type: string, description: "Absolute download URL.", example: 'https://api.cubbo.com/rails/active_storage/blobs/redirect/example/label.pdf'}
+        filename: {type: string, description: "File name.", example: label.pdf}
+        byte_size: {type: integer, description: "Size in bytes.", example: 48213}
+        content_type: {type: string, description: "MIME type.", example: application/pdf}
+
+    ShippingLabel:
+      type: object
+      description: A carrier label (guide) generated for an order, as returned by `GET /orders/{order_id}/shipping-labels`.
+      properties:
+        id: {type: integer, description: "Shipping label ID.", example: 4401}
+        order_id: {type: integer, description: "Order ID.", example: 987654}
+        shipping_number: {type: [string, 'null'], description: "Carrier tracking number.", example: TRK000000001}
+        label_type:
+          type: string
+          description: Purpose of the label. `Return Prepaid` labels are never returned by this endpoint.
+          enum: [Shipping, Cash On Delivery, Return, Return By Carrier, Pickup]
+          example: Shipping
+        tracking_url: {type: [string, 'null'], description: "Carrier tracking page.", example: 'https://carrier.example.com/track/TRK000000001'}
+        cubbo_tracking_url: {type: string, description: "Cubbo tracking page for the order.", example: 'https://tracking.example.com/orders/abc123'}
+        label_file:
+          description: The label PDF, or an empty object when no file is attached.
+          oneOf:
+            - $ref: '#/components/schemas/ShippingLabelFile'
+            - type: object
+              additionalProperties: false
+        billing_file:
+          description: Billing document attached to the label, or null.
+          oneOf:
+            - $ref: '#/components/schemas/ShippingLabelFile'
+            - type: 'null'

@@ -1,0 +1,1363 @@
+webhooks:
+  orderUpdated:
+    post:
+      tags: [Webhooks]
+      summary: Order status changed
+      operationId: webhookOrderUpdated
+      description: |
+        Cubbo sends this event to your order webhook URL every time an order's fulfillment status
+        changes: when the order is created (initial status), when it starts processing, enters picking
+        or packing, is put on hold or released, is interrupted, canceled, errored, shipped, and on every
+        return-related status (returning, return_arrived, returned, reentered). It is also sent when a
+        picking is sent to review (`picking_status: "in_review"`) and on every consumer-to-consumer (C2C)
+        lifecycle step.
+
+        - The body always carries `id`, `status`, `order_number`, `updated_at` and `store_id`.
+        - `products` (with the picked `unit_codes`) is present only while the order is in `picking` or
+          `packing`.
+        - `channel_name` and `channel_order_id` are included for every Open API integration created
+          recently; older integrations may not receive them.
+        - `channel_integration_id`, `channel_order_id` and `subchannel_name` are added when the
+          "include channel details in webhooks" setting is enabled for your store by Cubbo.
+        - `latest_estimated_time_arrival_range` is added when that extra field is enabled for your
+          integration by Cubbo.
+        - Retries resend the exact same body, so `(id, status, updated_at)` is a safe deduplication key.
+          There is no `X-Cubbo-Idempotency-Key` header on this event.
+      parameters:
+        - $ref: '#/components/parameters/WebhookEventHeader'
+        - $ref: '#/components/parameters/WebhookMessageIdHeader'
+        - $ref: '#/components/parameters/WebhookSignatureHeader'
+        - $ref: '#/components/parameters/WebhookIssuedAtHeader'
+        - $ref: '#/components/parameters/WebhookExpiresAtHeader'
+        - $ref: '#/components/parameters/WebhookAuthorizationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderUpdatedEvent'
+            examples:
+              picking:
+                summary: Order entered picking
+                value:
+                  id: 987654
+                  status: picking
+                  order_number: "ORD-0001"
+                  updated_at: "2026-10-12T15:04:05Z"
+                  store_id: 1234
+                  products:
+                    - id: 5551
+                      sku: "SKU-RED-M"
+                      quantity: 2
+                    - id: 5552
+                      sku: "SKU-PHONE-128"
+                      quantity: 1
+                      unit_codes: ["356789012345678"]
+                  channel_name: "openapi"
+                  channel_order_id: "SHOP-77421"
+              exchangeOrder:
+                summary: Order created by an exchange
+                value:
+                  id: 987655
+                  status: pending
+                  order_number: "ORD-0001-EXCHANGE"
+                  updated_at: "2026-10-12T15:04:05Z"
+                  store_id: 1234
+                  created_by_return:
+                    id: 4410
+                    status: RECEIVED
+                    notes: "Wrong size"
+                    return_type: EXCHANGE
+                    created_at: "2026-10-10T12:00:00Z"
+                    returned_order:
+                      id: 987654
+                      order_number: "ORD-0001"
+                      status: returned
+                  channel_name: "openapi"
+      responses:
+        '2XX':
+          description: |
+            Acknowledge receipt with any 2xx status. The response body is ignored. Respond as soon as the
+            event is persisted and process it asynchronously. A 429 or any 5xx response is retried; any
+            other 4xx response is treated as a permanent rejection and is not retried.
+
+  orderFulfilled:
+    post:
+      tags: [Webhooks]
+      summary: Order shipped (fulfilled)
+      operationId: webhookOrderFulfilled
+      description: |
+        Cubbo sends this event to your order webhook URL when the order's shipping labels are generated
+        and the order leaves packing, i.e. when it becomes `shipped`. It carries the recipient's name and
+        destination, the carrier, the tracking number of the first package and the Cubbo tracking page URL.
+        An `orderUpdated` event with `status: shipped` is sent separately for the same transition.
+
+        - `tracking_number` is the first package's carrier tracking number; `tracking_urls` contains the
+          Cubbo tracking page link, not the carrier's.
+        - `zip_code` is `"-"` for orders shipped from Chile when no postal code was given; `city` and
+          `zip_code` can be `null` for orders the client collects at the warehouse.
+        - `extended_zone` is added when the "include extended zone in webhooks" setting is enabled for
+          your store by Cubbo.
+        - `order_lines` is added when the "include order line details in webhooks" setting is enabled for
+          your store by Cubbo.
+        - `channel_integration_id`, `channel_order_id` and `subchannel_name` are added when the "include
+          channel details in webhooks" setting is enabled for your store by Cubbo.
+        - `shipping_type`, `delivery_type`, `billing_category` and `latest_estimated_time_arrival_range`
+          are added only when those extra fields are enabled for your integration by Cubbo.
+        - Retries resend the same body. There is no `X-Cubbo-Idempotency-Key` header on this event; use
+          `(id, status, updated_at)` or `(order_number, tracking_number)` to deduplicate.
+      parameters:
+        - $ref: '#/components/parameters/WebhookEventHeader'
+        - $ref: '#/components/parameters/WebhookMessageIdHeader'
+        - $ref: '#/components/parameters/WebhookSignatureHeader'
+        - $ref: '#/components/parameters/WebhookIssuedAtHeader'
+        - $ref: '#/components/parameters/WebhookExpiresAtHeader'
+        - $ref: '#/components/parameters/WebhookAuthorizationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderFulfilledEvent'
+            example:
+              id: 987654
+              order_number: "ORD-0001"
+              carrier_name: "Estafeta"
+              first_name: "Ana"
+              last_name: "Example"
+              city: "Ciudad de México"
+              country: "MX"
+              status: shipped
+              store_id: 1234
+              tracking_urls: ["https://tracking.example.com/orders/abc123"]
+              tracking_number: "1234567890123456789012"
+              updated_at: "2026-10-12T16:20:00Z"
+              zip_code: "06600"
+              estimated_time_arrival: "2026-10-14T23:59:59Z"
+              channel_name: "openapi"
+              channel_order_id: "SHOP-77421"
+      responses:
+        '2XX':
+          description: |
+            Acknowledge receipt with any 2xx status. The response body is ignored. A 429 or any 5xx
+            response is retried; any other 4xx response is treated as a permanent rejection and is not
+            retried.
+
+  shippingUpdated:
+    post:
+      tags: [Webhooks]
+      summary: Carrier tracking status changed
+      operationId: webhookShippingUpdated
+      description: |
+        Cubbo sends this event to your order webhook URL every time the carrier tracking status of a
+        shipped order changes (in transit, out for delivery, delivered, incident, returned, canceled,
+        partially delivered, to be self-collected). A tracking update whose status equals the previous
+        status is not sent.
+
+        - `status` is the shipment status that triggered the event. For multi-package orders it describes
+          the package that changed; the full set is listed in `packages`, and `triggered_by_package`
+          identifies the one that changed.
+        - `updated_at` is the timestamp of the carrier event, not the time of delivery of the webhook.
+        - `incident_description` is set only when `status` is `shipment_with_incident`.
+        - `estimated_time_arrival` is `null` when the shipment was returned or the package was reported
+          stolen or lost.
+        - `label_tracking_event_id` identifies the exact tracking event; combined with the
+          `X-Cubbo-Idempotency-Key` header it lets you deduplicate retries while still receiving one event
+          per package.
+        - `channel_integration_id` and `channel_order_id` are added when the "include channel details in
+          webhooks" setting is enabled for your store by Cubbo. `channel_name` and `channel_order_id` are
+          included for every recently created Open API integration.
+        - This event has no `id` field; correlate by `order_number` (unique within a store) or
+          `channel_order_id`.
+      parameters:
+        - $ref: '#/components/parameters/WebhookEventHeader'
+        - $ref: '#/components/parameters/WebhookMessageIdHeader'
+        - $ref: '#/components/parameters/WebhookSignatureHeader'
+        - $ref: '#/components/parameters/WebhookIssuedAtHeader'
+        - $ref: '#/components/parameters/WebhookExpiresAtHeader'
+        - $ref: '#/components/parameters/WebhookIdempotencyKeyHeader'
+        - $ref: '#/components/parameters/WebhookAuthorizationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShippingUpdatedEvent'
+            examples:
+              delivered:
+                summary: Single-package order delivered
+                value:
+                  status: shipment_delivered
+                  store_id: 1234
+                  carrier_name: "Estafeta"
+                  tracking_urls: ["https://tracking.example.com/orders/abc123"]
+                  tracking_number: "1234567890123456789012"
+                  zip_code: "06600"
+                  order_number: "ORD-0001"
+                  updated_at: "2026-10-14T18:32:10Z"
+                  estimated_time_arrival: "2026-10-14T23:59:59Z"
+                  incident_description: null
+                  label_tracking_event_id: 8812001
+                  is_multi_package: false
+                  packages:
+                    - shipping_number: "1234567890123456789012"
+                      tracking_url: "https://carrier.example.com/track/1234567890123456789012"
+                      shipping_status: shipment_delivered
+                      carrier_name: "Estafeta"
+                      package_index: 1
+                      total_packages: 1
+                  triggered_by_package:
+                    shipping_number: "1234567890123456789012"
+                    shipping_status: shipment_delivered
+                    carrier_name: "Estafeta"
+                    tracking_url: "https://carrier.example.com/track/1234567890123456789012"
+                    previous_status: shipment_out_for_delivery
+                    package_index: 1
+                    total_packages: 1
+                  channel_name: "openapi"
+              incident:
+                summary: Delivery attempt failed
+                value:
+                  status: shipment_with_incident
+                  store_id: 1234
+                  carrier_name: "Estafeta"
+                  tracking_urls: ["https://tracking.example.com/orders/abc123"]
+                  tracking_number: "1234567890123456789012"
+                  zip_code: "06600"
+                  order_number: "ORD-0001"
+                  updated_at: "2026-10-13T11:05:00Z"
+                  estimated_time_arrival: "2026-10-14T23:59:59Z"
+                  incident_description: not_at_home
+                  label_tracking_event_id: 8811990
+                  is_multi_package: false
+                  packages:
+                    - shipping_number: "1234567890123456789012"
+                      tracking_url: "https://carrier.example.com/track/1234567890123456789012"
+                      shipping_status: shipment_with_incident
+                      carrier_name: "Estafeta"
+                      package_index: 1
+                      total_packages: 1
+                  triggered_by_package:
+                    shipping_number: "1234567890123456789012"
+                    shipping_status: shipment_with_incident
+                    carrier_name: "Estafeta"
+                    tracking_url: "https://carrier.example.com/track/1234567890123456789012"
+                    previous_status: shipment_in_transit
+                    package_index: 1
+                    total_packages: 1
+                  channel_name: "openapi"
+      responses:
+        '2XX':
+          description: |
+            Acknowledge receipt with any 2xx status. The response body is ignored. A 429 or any 5xx
+            response is retried; any other 4xx response is treated as a permanent rejection and is not
+            retried.
+
+  inventoryMovement:
+    post:
+      tags: [Webhooks]
+      summary: Inventory snapshot after a stock movement
+      operationId: webhookInventoryMovement
+      description: |
+        Cubbo sends this event to your inventory webhook URL whenever the stock of one or more products
+        changes (an order ships, stock is received or put away, a return is reentered, an adjustment is
+        made, and so on). The body is a snapshot of the current stock of the affected products, not a
+        delta. When Cubbo runs a full resynchronization for your store, the snapshot contains every
+        product of the store.
+
+        - This feed must be enabled for your integration (it is opt-in and requires the order webhook
+          feed to be active). It can point at a different URL than the order feed and can carry its own
+          custom headers.
+        - Products without any SKU are omitted. If no product remains, nothing is sent.
+        - Events for one integration are delivered one at a time, in order. `sequence` is a monotonic
+          counter per integration: process events by `sequence`, not by arrival time, and treat a lower
+          `sequence` than the last one you processed as stale. Gaps are possible.
+        - `X-Cubbo-Idempotency-Key` is a UUID that stays the same on every retry of the same event.
+        - The payload is additive: ignore fields you do not know.
+      parameters:
+        - $ref: '#/components/parameters/WebhookEventHeader'
+        - $ref: '#/components/parameters/WebhookMessageIdHeader'
+        - $ref: '#/components/parameters/WebhookSignatureHeader'
+        - $ref: '#/components/parameters/WebhookIssuedAtHeader'
+        - $ref: '#/components/parameters/WebhookExpiresAtHeader'
+        - $ref: '#/components/parameters/WebhookIdempotencyKeyHeader'
+        - $ref: '#/components/parameters/WebhookAuthorizationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryMovementEvent'
+            example:
+              event: inventoryMovement
+              occurred_at: "2026-10-12T16:25:00-06:00"
+              sequence: 42
+              store_id: 1234
+              products:
+                - product_name: "Red T-Shirt M"
+                  product_code: "7501234567890"
+                  skus: ["SKU-RED-M"]
+                  quantity: 148
+                - product_name: "Smartphone 128GB"
+                  product_code: "7509876543210"
+                  skus: ["SKU-PHONE-128"]
+                  quantity: 2
+                  units:
+                    - unit_code: "356789012345678"
+                      status: ACTIVE
+                    - unit_code: "356789012345679"
+                      status: RESERVED
+                    - unit_code: "356789012345680"
+                      status: DAMAGED
+                      damaged_source: RETURN
+                - product_name: "Vitamin C 500mg"
+                  product_code: "7501111222333"
+                  skus: ["SKU-VITC-500"]
+                  quantity: 8
+                  lots:
+                    - lot_code: "LOT-2026A"
+                      expiration_date: "2026-12-31"
+                      quantity: 3
+                    - lot_code: "LOT-2027B"
+                      expiration_date: "2027-06-30"
+                      quantity: 5
+      responses:
+        '2XX':
+          description: |
+            Acknowledge receipt with any 2xx status. The response body is ignored. A 429 or any 5xx
+            response is retried; any other 4xx response is treated as a permanent rejection and is not
+            retried. While a delivery is pending, later inventory events for the same integration wait
+            behind it.
+
+  replenishmentCreated:
+    post:
+      tags: [Webhooks]
+      summary: Replenishment announced
+      operationId: webhookReplenishmentCreated
+      description: |
+        Cubbo sends this event to your replenishment webhook URL when a replenishment (inbound receipt)
+        is created before any merchandise has arrived, i.e. created in status `WITHOUT_SCHEDULING`,
+        `PENDING`, `REQUESTED` or `IN_TRANSIT`. Receipts that are born already in the warehouse (reverse
+        logistics, relocations, transfers) do not produce this event; they only produce
+        `replenishmentStatus` events on later transitions.
+
+        - This feed must be enabled for your integration (opt-in, with its own URL). It does not require
+          the order webhook feed.
+        - `products` lists the expected and received quantities per product; `received_quantity` is 0 at
+          this point.
+        - `sequence` is the timestamp of the transition in epoch milliseconds; order events of the same
+          replenishment by it.
+        - `X-Cubbo-Idempotency-Key` is deterministic (`replenishment:<id>:<status>:<integration>`), so a
+          retry carries the same key.
+      parameters:
+        - $ref: '#/components/parameters/WebhookEventHeader'
+        - $ref: '#/components/parameters/WebhookMessageIdHeader'
+        - $ref: '#/components/parameters/WebhookSignatureHeader'
+        - $ref: '#/components/parameters/WebhookIssuedAtHeader'
+        - $ref: '#/components/parameters/WebhookExpiresAtHeader'
+        - $ref: '#/components/parameters/WebhookIdempotencyKeyHeader'
+        - $ref: '#/components/parameters/WebhookAuthorizationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplenishmentCreatedEvent'
+            example:
+              event: replenishmentCreated
+              occurred_at: "2026-10-12T09:00:00-06:00"
+              store_id: 1234
+              replenishment_id: 55010
+              status: REQUESTED
+              sell_ahead: false
+              appointment_date: null
+              products:
+                - product_code: "7501234567890"
+                  skus: ["SKU-RED-M"]
+                  expected_quantity: 200
+                  received_quantity: 0
+              supplier_invoices: []
+              sequence: 1791234567890
+      responses:
+        '2XX':
+          description: |
+            Acknowledge receipt with any 2xx status. The response body is ignored. A 429 or any 5xx
+            response is retried; any other 4xx response is treated as a permanent rejection and is not
+            retried. Replenishment events for one integration are delivered one at a time, in order.
+
+  replenishmentScheduled:
+    post:
+      tags: [Webhooks]
+      summary: Replenishment appointment booked or canceled
+      operationId: webhookReplenishmentScheduled
+      description: |
+        Cubbo sends this event to your replenishment webhook URL when a delivery appointment (dock slot)
+        is booked for a replenishment, including the new slot created by a reschedule, and when a booked
+        appointment is canceled. The replenishment's own `status` does not change on these events; the
+        news is `appointment_date`, which carries the booked date or `null` after a cancellation.
+        Walk-in deliveries, no-shows and check-ins do not produce this event.
+
+        - `X-Cubbo-Idempotency-Key` is deterministic and includes the appointment
+          (`replenishment:<id>:<status>:appointment:<appointment id>:<booked|canceled>:<integration>`).
+      parameters:
+        - $ref: '#/components/parameters/WebhookEventHeader'
+        - $ref: '#/components/parameters/WebhookMessageIdHeader'
+        - $ref: '#/components/parameters/WebhookSignatureHeader'
+        - $ref: '#/components/parameters/WebhookIssuedAtHeader'
+        - $ref: '#/components/parameters/WebhookExpiresAtHeader'
+        - $ref: '#/components/parameters/WebhookIdempotencyKeyHeader'
+        - $ref: '#/components/parameters/WebhookAuthorizationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplenishmentScheduledEvent'
+            example:
+              event: replenishmentScheduled
+              occurred_at: "2026-10-12T10:15:00-06:00"
+              store_id: 1234
+              replenishment_id: 55010
+              status: REQUESTED
+              sell_ahead: false
+              appointment_date: "2026-10-20"
+              products:
+                - product_code: "7501234567890"
+                  skus: ["SKU-RED-M"]
+                  expected_quantity: 200
+                  received_quantity: 0
+              supplier_invoices: []
+              sequence: 1791239000000
+      responses:
+        '2XX':
+          description: |
+            Acknowledge receipt with any 2xx status. The response body is ignored. A 429 or any 5xx
+            response is retried; any other 4xx response is treated as a permanent rejection and is not
+            retried.
+
+  replenishmentStatus:
+    post:
+      tags: [Webhooks]
+      summary: Replenishment status changed
+      operationId: webhookReplenishmentStatus
+      description: |
+        Cubbo sends this event to your replenishment webhook URL when a replenishment transitions to
+        `PROCESSING` (merchandise received and being counted), `IN_PUTAWAY` (units being stored),
+        `COMPLETED` (receipt closed) or `CANCELED`. Other statuses (`RECEIVED` at dock arrival, the
+        pre-arrival statuses) do not produce this event.
+
+        - `products` carries, per product, the expected quantity and the quantity received so far;
+          `supplier_invoices` carries the supplier invoice numbers captured at reception. Both are omitted
+          when `status` is `CANCELED`.
+        - `sell_ahead` is `true` for presale replenishments whose stock could be sold before arrival.
+        - `sequence` is the timestamp of the transition in epoch milliseconds; retries keep it.
+        - `X-Cubbo-Idempotency-Key` is deterministic (`replenishment:<id>:<status>:<integration>`).
+      parameters:
+        - $ref: '#/components/parameters/WebhookEventHeader'
+        - $ref: '#/components/parameters/WebhookMessageIdHeader'
+        - $ref: '#/components/parameters/WebhookSignatureHeader'
+        - $ref: '#/components/parameters/WebhookIssuedAtHeader'
+        - $ref: '#/components/parameters/WebhookExpiresAtHeader'
+        - $ref: '#/components/parameters/WebhookIdempotencyKeyHeader'
+        - $ref: '#/components/parameters/WebhookAuthorizationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplenishmentStatusEvent'
+            examples:
+              completed:
+                summary: Receipt completed
+                value:
+                  event: replenishmentStatus
+                  occurred_at: "2026-10-21T17:45:00-06:00"
+                  store_id: 1234
+                  replenishment_id: 55010
+                  status: COMPLETED
+                  sell_ahead: false
+                  appointment_date: "2026-10-20"
+                  products:
+                    - product_code: "7501234567890"
+                      skus: ["SKU-RED-M"]
+                      expected_quantity: 200
+                      received_quantity: 198
+                  supplier_invoices:
+                    - invoice_number: "F-0001"
+                  sequence: 1792000000000
+              canceled:
+                summary: Receipt canceled
+                value:
+                  event: replenishmentStatus
+                  occurred_at: "2026-10-15T08:00:00-06:00"
+                  store_id: 1234
+                  replenishment_id: 55011
+                  status: CANCELED
+                  sell_ahead: false
+                  appointment_date: null
+                  sequence: 1791500000000
+      responses:
+        '2XX':
+          description: |
+            Acknowledge receipt with any 2xx status. The response body is ignored. A 429 or any 5xx
+            response is retried; any other 4xx response is treated as a permanent rejection and is not
+            retried.
+
+components:
+  parameters:
+    WebhookEventHeader:
+      name: X-Webhook-Event
+      in: header
+      required: true
+      description: |
+        Name of the event (`orderUpdated`, `orderFulfilled`, `shippingUpdated`, `inventoryMovement`,
+        `replenishmentStatus`, `replenishmentCreated`, `replenishmentScheduled`). Route on this header,
+        not on the URL: all feeds can share one endpoint. Treat a request without this header as an order
+        event.
+      schema:
+        type: string
+        enum:
+          - orderUpdated
+          - orderFulfilled
+          - shippingUpdated
+          - inventoryMovement
+          - replenishmentStatus
+          - replenishmentCreated
+          - replenishmentScheduled
+      example: shippingUpdated
+    WebhookMessageIdHeader:
+      name: X-Cubbo-Webhook-Message-Id
+      in: header
+      required: true
+      description: |
+        UUID of this delivery attempt. It is part of the signed string. A new value is generated on every
+        attempt, so a retry of the same event carries a different message id.
+      schema:
+        type: string
+        format: uuid
+      example: "3f2b1c7e-9d4a-4e8f-9a1b-2c3d4e5f6a7b"
+    WebhookSignatureHeader:
+      name: X-Cubbo-Hmac-SHA256
+      in: header
+      required: true
+      description: |
+        Lowercase hex HMAC-SHA256 of the string `<message id>.<isa>.<exp>.<raw request body>` computed
+        with your webhook secret. Verify it against the exact bytes you received before parsing the body.
+      schema:
+        type: string
+        pattern: '^[0-9a-f]{64}$'
+      example: "9b74c9897bac770ffc029102a200c5de3a1c7b5e0d5f4a6b8c9d0e1f2a3b4c5d"
+    WebhookIssuedAtHeader:
+      name: isa
+      in: header
+      required: true
+      description: Unix timestamp (seconds, UTC) at which the request was signed. Part of the signed string.
+      schema:
+        type: string
+      example: "1791234567"
+    WebhookExpiresAtHeader:
+      name: exp
+      in: header
+      required: true
+      description: |
+        Unix timestamp (seconds, UTC) after which the signature should be rejected; always `isa` + 300.
+        Part of the signed string.
+      schema:
+        type: string
+      example: "1791234867"
+    WebhookIdempotencyKeyHeader:
+      name: X-Cubbo-Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Stable key for the event: identical on every retry of the same event. Sent on `shippingUpdated`
+        (carrier tracking events), `inventoryMovement` and the replenishment events. Not sent on
+        `orderUpdated` or `orderFulfilled`. Store the keys you have processed and ignore repeats.
+      schema:
+        type: string
+      example: "lte-8812001-ci-4321"
+    WebhookAuthorizationHeader:
+      name: Authorization
+      in: header
+      required: false
+      description: |
+        `Bearer <token>`, sent only when OAuth 2.0 client-credentials authentication has been configured
+        for your integration by Cubbo. Cubbo requests the token from your token URL with
+        `grant_type=client_credentials` and caches it until shortly before it expires.
+      schema:
+        type: string
+      example: "Bearer eyJhbGciOi..."
+
+  schemas:
+    OrderUpdatedEvent:
+      type: object
+      description: Payload of the `orderUpdated` event.
+      required: [id, status, order_number, updated_at, store_id]
+      properties:
+        id:
+          type: integer
+          description: Cubbo order id.
+          example: 987654
+        status:
+          type: string
+          description: New fulfillment status of the order.
+          enum:
+            - initial
+            - unpaid
+            - empty
+            - pending
+            - error
+            - cancelation_window
+            - entirely_dropshipping
+            - backorder
+            - processing
+            - picking
+            - packing
+            - shipped
+            - canceled
+            - holded
+            - interrupted
+            - returned
+            - return_arrived
+            - returning
+            - reentered
+            - awaiting_fulfillment_request
+            - awaiting_dropoff
+            - arrived_at_warehouse
+          example: picking
+        order_number:
+          type: string
+          description: Your order number, as sent when the order was created.
+          example: "ORD-0001"
+        updated_at:
+          type: string
+          format: date-time
+          description: UTC time at which the status change was recorded.
+          example: "2026-10-12T15:04:05Z"
+        store_id:
+          type: integer
+          description: Cubbo store id the order belongs to.
+          example: 1234
+        products:
+          type: array
+          description: Order lines with the picked unit codes. Present only while `status` is `picking` or `packing`.
+          items:
+            $ref: '#/components/schemas/WebhookOrderUpdatedProduct'
+        picking_status:
+          type: string
+          description: Present only when the picking of the order was sent to review.
+          enum: [in_review]
+          example: in_review
+        created_by_return:
+          $ref: '#/components/schemas/WebhookCreatedByReturn'
+        c2c:
+          $ref: '#/components/schemas/WebhookC2cDetails'
+        parent_order_id:
+          type: integer
+          description: Present when this order is the child of a presale split; id of the original order.
+          example: 987000
+        channel_name:
+          type: string
+          description: Sales channel name given when the order was created, or the integration type (`openapi`) when none was given.
+          example: "openapi"
+        channel_order_id:
+          type: string
+          description: Your channel order id, when it was provided at creation.
+          example: "SHOP-77421"
+        channel_integration_id:
+          type: integer
+          description: Cubbo integration id. Present only when channel details are enabled for your store.
+          example: 4321
+        subchannel_name:
+          type: [string, 'null']
+          description: Sub-channel or marketplace name. Present only when channel details are enabled for your store.
+          example: "Marketplace A"
+        latest_estimated_time_arrival_range:
+          $ref: '#/components/schemas/WebhookEtaRange'
+      additionalProperties: true
+
+    WebhookOrderUpdatedProduct:
+      type: object
+      description: An order line as reported during picking and packing.
+      required: [id, sku, quantity]
+      properties:
+        id:
+          type: integer
+          description: Cubbo product id.
+          example: 5551
+        sku:
+          type: string
+          description: SKU of the product.
+          example: "SKU-RED-M"
+        quantity:
+          type: integer
+          description: Quantity ordered.
+          example: 2
+        unit_codes:
+          type: array
+          description: Serial numbers / IMEIs of the picked units. Present only when the line has picked units with codes.
+          items:
+            type: string
+          example: ["356789012345678"]
+
+    WebhookCreatedByReturn:
+      type: object
+      description: Present when the order was created by a return or exchange flow.
+      properties:
+        id:
+          type: integer
+          description: Cubbo return id.
+          example: 4410
+        status:
+          type: string
+          description: Status of the return.
+          enum: [REQUESTED, PENDING, ORDERED, CANCELLED, RECEIVED, ARRIVED_AT_WAREHOUSE, AWAITING_INSPECTION, REENTERED, UNSUCCESSFUL]
+          example: RECEIVED
+        notes:
+          type: [string, 'null']
+          description: Free-text notes on the return.
+          example: "Wrong size"
+        return_type:
+          type: string
+          description: Type of return.
+          enum: [SIMPLE_RETURN, EXCHANGE, IMMEDIATE_EXCHANGE, RETURNED_BY_CARRIER, TO_BE_DETERMINED, UNIDENTIFIED]
+          example: EXCHANGE
+        created_at:
+          type: string
+          format: date-time
+          description: When the return was created.
+          example: "2026-10-10T12:00:00Z"
+        returned_order:
+          type: object
+          description: The order being returned. Contains at least `id`, `order_number` and `status`; other order fields may also be present.
+          properties:
+            id:
+              type: integer
+              example: 987654
+            order_number:
+              type: string
+              example: "ORD-0001"
+            status:
+              type: string
+              example: returned
+          additionalProperties: true
+      additionalProperties: true
+
+    WebhookC2cDetails:
+      type: object
+      description: Consumer-to-consumer (C2C) shipment details. Present only for C2C orders.
+      properties:
+        roll_code:
+          type: [string, 'null']
+          description: Code of the roll (label) bound to the package.
+          example: "ROLL-000123"
+        origin_location_id:
+          type: [string, 'null']
+          description: Pickup point where the package was dropped off.
+          example: "77"
+        dropped_off_at:
+          type: [string, 'null']
+          format: date-time
+          description: When the sender dropped the package off.
+          example: "2026-10-12T10:00:00Z"
+        recollected_at:
+          type: [string, 'null']
+          format: date-time
+          description: When the package was collected from the pickup point.
+          example: "2026-10-12T18:00:00Z"
+        arrived_at_warehouse_at:
+          type: [string, 'null']
+          format: date-time
+          description: When the package arrived at the Cubbo warehouse.
+          example: null
+        event:
+          type: string
+          description: C2C lifecycle step that triggered this webhook. Absent when the order changed for another reason.
+          enum: [c2c_dropped_off, c2c_recollected, c2c_arrived_at_warehouse, c2c_shipped]
+          example: c2c_dropped_off
+
+    WebhookEtaRange:
+      type: object
+      description: Latest estimated delivery window, in UTC. Sent only when enabled for your integration; `null` when no estimate exists.
+      properties:
+        range_begin:
+          type: string
+          format: date-time
+          description: Start of the estimated delivery window.
+          example: "2026-10-14T06:00:00Z"
+        range_end:
+          type: string
+          format: date-time
+          description: End of the estimated delivery window.
+          example: "2026-10-15T05:59:59Z"
+
+    OrderFulfilledEvent:
+      type: object
+      description: Payload of the `orderFulfilled` event.
+      required: [id, order_number, carrier_name, status, store_id, tracking_urls, tracking_number, updated_at]
+      properties:
+        id:
+          type: integer
+          description: Cubbo order id.
+          example: 987654
+        order_number:
+          type: string
+          description: Your order number.
+          example: "ORD-0001"
+        carrier_name:
+          type: [string, 'null']
+          description: Carrier that will deliver the order.
+          example: "Estafeta"
+        first_name:
+          type: [string, 'null']
+          description: Recipient first name.
+          example: "Ana"
+        last_name:
+          type: [string, 'null']
+          description: Recipient last name.
+          example: "Example"
+        city:
+          type: [string, 'null']
+          description: Destination city. `null` for orders collected at the warehouse.
+          example: "Ciudad de México"
+        country:
+          type: [string, 'null']
+          description: Destination country code.
+          example: "MX"
+        status:
+          type: string
+          description: Fulfillment status at the moment of shipping; normally `shipped`.
+          example: shipped
+        store_id:
+          type: integer
+          description: Cubbo store id.
+          example: 1234
+        tracking_urls:
+          type: array
+          description: Cubbo tracking page URL for the order (one element).
+          items:
+            type: string
+            format: uri
+          example: ["https://tracking.example.com/orders/abc123"]
+        tracking_number:
+          type: [string, 'null']
+          description: Carrier tracking number of the first package.
+          example: "1234567890123456789012"
+        updated_at:
+          type: string
+          format: date-time
+          description: When the order was last updated (time of shipping).
+          example: "2026-10-12T16:20:00Z"
+        zip_code:
+          type: [string, 'null']
+          description: Destination postal code. `"-"` for Chile shipments without a postal code; `null` for warehouse pickups.
+          example: "06600"
+        estimated_time_arrival:
+          type: [string, 'null']
+          format: date-time
+          description: Estimated delivery date and time, when known.
+          example: "2026-10-14T23:59:59Z"
+        extended_zone:
+          type: boolean
+          description: Whether the destination postal code is an extended delivery zone for the carrier. Present only when enabled for your store.
+          example: false
+        channel_name:
+          type: string
+          description: Sales channel name given at creation, or the integration type when none was given.
+          example: "openapi"
+        channel_order_id:
+          type: string
+          description: Your channel order id, when it was provided at creation.
+          example: "SHOP-77421"
+        channel_integration_id:
+          type: integer
+          description: Cubbo integration id. Present only when channel details are enabled for your store.
+          example: 4321
+        subchannel_name:
+          type: [string, 'null']
+          description: Sub-channel or marketplace name. Present only when channel details are enabled for your store.
+          example: "Marketplace A"
+        order_lines:
+          type: array
+          description: Shipped order lines with product and unit detail. Present only when enabled for your store.
+          items:
+            $ref: '#/components/schemas/WebhookOrderFulfilledOrderLine'
+        created_by_return:
+          $ref: '#/components/schemas/WebhookCreatedByReturn'
+        shipping_type:
+          type: [string, 'null']
+          description: Shipping method type. Present only when enabled for your integration.
+          example: "standard"
+        delivery_type:
+          type: [string, 'null']
+          description: Delivery type of the shipping method. Present only when enabled for your integration.
+          example: "home_delivery"
+        billing_category:
+          type: [string, 'null']
+          description: Billing service category of the shipping label. Present only when enabled for your integration.
+          example: "STANDARD"
+        latest_estimated_time_arrival_range:
+          $ref: '#/components/schemas/WebhookEtaRange'
+      additionalProperties: true
+
+    WebhookOrderFulfilledOrderLine:
+      type: object
+      description: A shipped order line.
+      properties:
+        id:
+          type: integer
+          description: Order line id.
+          example: 771
+        sku:
+          type: string
+          description: SKU ordered.
+          example: "SKU-RED-M"
+        quantity:
+          type: integer
+          description: Quantity shipped for this line.
+          example: 2
+        product:
+          type: object
+          description: Product of the line.
+          properties:
+            id:
+              type: integer
+              example: 5551
+            name:
+              type: string
+              example: "Red T-Shirt M"
+            is_kit:
+              type: boolean
+              description: Whether the product is a kit (bundle).
+              example: false
+            bar_code:
+              type: [string, 'null']
+              example: "7501234567890"
+            product_codes:
+              type: array
+              description: All SKUs of the product.
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 9001
+                  sku:
+                    type: string
+                    example: "SKU-RED-M"
+        stock_units:
+          type: array
+          description: Physical units shipped for the line.
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                example: 120001
+              product_id:
+                type: integer
+                example: 5551
+              imei:
+                type: [string, 'null']
+                description: IMEI / serial of the unit, when tracked.
+                example: null
+
+    ShippingUpdatedEvent:
+      type: object
+      description: Payload of the `shippingUpdated` event.
+      required: [status, store_id, order_number, updated_at, tracking_urls, is_multi_package, packages]
+      properties:
+        status:
+          type: string
+          description: Shipment status that triggered the event.
+          enum:
+            - shipment_in_transit
+            - shipment_out_for_delivery
+            - shipment_delivered
+            - shipment_partially_delivered
+            - shipment_with_incident
+            - shipment_returned
+            - shipment_canceled
+            - shipment_to_be_self_collected
+            - shipment_not_defined
+          example: shipment_delivered
+        store_id:
+          type: integer
+          description: Cubbo store id.
+          example: 1234
+        carrier_name:
+          type: [string, 'null']
+          description: Carrier of the package that triggered the event.
+          example: "Estafeta"
+        tracking_urls:
+          type: array
+          description: Cubbo tracking page URL for the order (one element).
+          items:
+            type: string
+            format: uri
+          example: ["https://tracking.example.com/orders/abc123"]
+        tracking_number:
+          type: [string, 'null']
+          description: Carrier tracking number of the package that triggered the event.
+          example: "1234567890123456789012"
+        zip_code:
+          type: [string, 'null']
+          description: Destination postal code (`"-"` for Chile shipments without one).
+          example: "06600"
+        order_number:
+          type: string
+          description: Your order number.
+          example: "ORD-0001"
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp of the carrier tracking event.
+          example: "2026-10-14T18:32:10Z"
+        estimated_time_arrival:
+          type: [string, 'null']
+          format: date-time
+          description: Estimated delivery date and time. `null` when the shipment was returned or reported stolen or lost.
+          example: "2026-10-14T23:59:59Z"
+        incident_description:
+          type: [string, 'null']
+          description: Reason of the incident. Set only when `status` is `shipment_with_incident`.
+          enum:
+            - second_try
+            - third_try
+            - client_requested
+            - missing_references
+            - not_at_home
+            - refused_payment
+            - refused_package
+            - cubbo_requested
+            - carrier_requested
+            - stolen
+            - lost
+            - damaged
+            - loading_error
+            - pickup_expired
+            - delivery_failed
+            - null
+          example: null
+        label_tracking_event_id:
+          type: [integer, 'null']
+          description: Id of the tracking event that produced this webhook. Stable across retries.
+          example: 8812001
+        is_multi_package:
+          type: boolean
+          description: Whether the order ships in more than one package.
+          example: false
+        packages:
+          type: array
+          description: All packages of the order, oldest first.
+          items:
+            $ref: '#/components/schemas/WebhookShippingPackage'
+        triggered_by_package:
+          $ref: '#/components/schemas/WebhookTriggeringPackage'
+        parent_order_id:
+          type: integer
+          description: Present when this order is the child of a presale split; id of the original order.
+          example: 987000
+        channel_name:
+          type: string
+          description: Sales channel name given at creation, or the integration type when none was given.
+          example: "openapi"
+        channel_order_id:
+          type: string
+          description: Your channel order id, when it was provided at creation.
+          example: "SHOP-77421"
+        channel_integration_id:
+          type: integer
+          description: Cubbo integration id. Present only when channel details are enabled for your store.
+          example: 4321
+        latest_estimated_time_arrival_range:
+          $ref: '#/components/schemas/WebhookEtaRange'
+      additionalProperties: true
+
+    WebhookShippingPackage:
+      type: object
+      description: One package (shipping label) of the order.
+      properties:
+        shipping_number:
+          type: string
+          description: Carrier tracking number of the package.
+          example: "1234567890123456789012"
+        tracking_url:
+          type: [string, 'null']
+          description: Carrier tracking URL of the package.
+          example: "https://carrier.example.com/track/1234567890123456789012"
+        shipping_status:
+          type: string
+          description: Current shipment status of this package (falls back to the order status when the package has none yet).
+          example: shipment_delivered
+        carrier_name:
+          type: [string, 'null']
+          description: Carrier of the package.
+          example: "Estafeta"
+        package_index:
+          type: integer
+          description: 1-based position of the package.
+          example: 1
+        total_packages:
+          type: integer
+          description: Number of packages in the order.
+          example: 1
+
+    WebhookTriggeringPackage:
+      type: object
+      description: The package whose tracking event produced this webhook. Present when the event came from a specific package.
+      properties:
+        shipping_number:
+          type: string
+          example: "1234567890123456789012"
+        shipping_status:
+          type: string
+          description: New status of the package.
+          example: shipment_delivered
+        carrier_name:
+          type: [string, 'null']
+          example: "Estafeta"
+        tracking_url:
+          type: [string, 'null']
+          example: "https://carrier.example.com/track/1234567890123456789012"
+        previous_status:
+          type: [string, 'null']
+          description: Status of the package before this event.
+          example: shipment_out_for_delivery
+        package_index:
+          type: [integer, 'null']
+          description: 1-based position of the package within `packages`.
+          example: 1
+        total_packages:
+          type: integer
+          example: 1
+
+    InventoryMovementEvent:
+      type: object
+      description: Payload of the `inventoryMovement` event.
+      required: [event, occurred_at, sequence, store_id, products]
+      properties:
+        event:
+          type: string
+          enum: [inventoryMovement]
+          description: Event name.
+          example: inventoryMovement
+        occurred_at:
+          type: string
+          format: date-time
+          description: When the stock snapshot was taken.
+          example: "2026-10-12T16:25:00-06:00"
+        sequence:
+          type: integer
+          description: Monotonic counter per integration. Higher means newer; gaps are possible.
+          example: 42
+        store_id:
+          type: integer
+          description: Cubbo store id.
+          example: 1234
+        products:
+          type: array
+          description: Current stock of each affected product.
+          items:
+            $ref: '#/components/schemas/WebhookInventoryProduct'
+      additionalProperties: true
+
+    WebhookInventoryProduct:
+      type: object
+      description: Stock snapshot of one product.
+      required: [product_name, skus, quantity]
+      properties:
+        product_name:
+          type: string
+          description: Product name.
+          example: "Red T-Shirt M"
+        product_code:
+          type: [string, 'null']
+          description: Product bar code.
+          example: "7501234567890"
+        skus:
+          type: array
+          description: All SKUs of the product.
+          items:
+            type: string
+          example: ["SKU-RED-M"]
+        quantity:
+          type: integer
+          description: Available (sellable) units; excludes reserved, damaged and lost units.
+          example: 148
+        units:
+          type: array
+          description: Per-unit detail. Present for products tracked by unit code (every unit) and for other products that have damaged or lost units.
+          items:
+            $ref: '#/components/schemas/WebhookInventoryUnit'
+        lots:
+          type: array
+          description: Lots with available stock, earliest expiration first. Present only for expiration-tracked products.
+          items:
+            $ref: '#/components/schemas/WebhookInventoryLot'
+
+    WebhookInventoryUnit:
+      type: object
+      description: One physical unit, or one damaged/lost unit without code.
+      required: [status]
+      properties:
+        unit_code:
+          type: string
+          description: Serial number / IMEI. Present only for products tracked by unit code.
+          example: "356789012345678"
+        status:
+          type: string
+          description: Status of the unit.
+          enum: [ACTIVE, RESERVED, DAMAGED, LOST]
+          example: ACTIVE
+        damaged_source:
+          type: [string, 'null']
+          description: Where the damage was found. Present only when `status` is `DAMAGED`.
+          enum: [REPLENISHMENT, RETURN, STORAGE, null]
+          example: RETURN
+        lost_source:
+          type: string
+          description: Where the unit was lost. Present only when `status` is `LOST`.
+          enum: [REPLENISHMENT, RETURN, STORAGE, DELIVERY]
+          example: REPLENISHMENT
+
+    WebhookInventoryLot:
+      type: object
+      description: Available stock in one lot.
+      properties:
+        lot_code:
+          type: string
+          description: Lot code.
+          example: "LOT-2026A"
+        expiration_date:
+          type: [string, 'null']
+          format: date
+          description: Lot expiration date.
+          example: "2026-12-31"
+        quantity:
+          type: integer
+          description: Available units in the lot.
+          example: 3
+
+    ReplenishmentEvent:
+      type: object
+      description: Common payload of the replenishment events.
+      required: [event, occurred_at, store_id, replenishment_id, status, sell_ahead, sequence]
+      properties:
+        event:
+          type: string
+          description: Event name.
+          enum: [replenishmentStatus, replenishmentCreated, replenishmentScheduled]
+          example: replenishmentStatus
+        occurred_at:
+          type: string
+          format: date-time
+          description: When the payload was built.
+          example: "2026-10-21T17:45:00-06:00"
+        store_id:
+          type: integer
+          description: Cubbo store id.
+          example: 1234
+        replenishment_id:
+          type: integer
+          description: Cubbo replenishment id.
+          example: 55010
+        status:
+          type: string
+          description: Status of the replenishment at the moment of the event.
+          enum: [WITHOUT_SCHEDULING, PENDING, REQUESTED, PROCESSING, IN_TRANSIT, RECEIVED, IN_PUTAWAY, CANCELED, COMPLETED]
+          example: COMPLETED
+        sell_ahead:
+          type: boolean
+          description: Whether this is a presale replenishment whose stock can be sold before arrival.
+          example: false
+        appointment_date:
+          type: [string, 'null']
+          format: date
+          description: Date of the booked delivery appointment, or `null` when none is booked.
+          example: "2026-10-20"
+        products:
+          type: array
+          description: Expected vs received quantity per product. Omitted when `status` is `CANCELED`.
+          items:
+            $ref: '#/components/schemas/WebhookReplenishmentProduct'
+        supplier_invoices:
+          type: array
+          description: Supplier invoice numbers captured for the receipt. Omitted when `status` is `CANCELED`.
+          items:
+            $ref: '#/components/schemas/WebhookSupplierInvoice'
+        sequence:
+          type: integer
+          format: int64
+          description: Ordering hint; epoch milliseconds of the transition that produced the event.
+          example: 1792000000000
+      additionalProperties: true
+
+    ReplenishmentStatusEvent:
+      description: Payload of the `replenishmentStatus` event.
+      allOf:
+        - $ref: '#/components/schemas/ReplenishmentEvent'
+        - type: object
+          properties:
+            event:
+              type: string
+              enum: [replenishmentStatus]
+            status:
+              type: string
+              enum: [PROCESSING, IN_PUTAWAY, COMPLETED, CANCELED]
+
+    ReplenishmentCreatedEvent:
+      description: Payload of the `replenishmentCreated` event.
+      allOf:
+        - $ref: '#/components/schemas/ReplenishmentEvent'
+        - type: object
+          properties:
+            event:
+              type: string
+              enum: [replenishmentCreated]
+            status:
+              type: string
+              enum: [WITHOUT_SCHEDULING, PENDING, REQUESTED, IN_TRANSIT]
+
+    ReplenishmentScheduledEvent:
+      description: Payload of the `replenishmentScheduled` event.
+      allOf:
+        - $ref: '#/components/schemas/ReplenishmentEvent'
+        - type: object
+          properties:
+            event:
+              type: string
+              enum: [replenishmentScheduled]
+
+    WebhookReplenishmentProduct:
+      type: object
+      description: Expected and received quantity of one product in the replenishment.
+      required: [skus, expected_quantity, received_quantity]
+      properties:
+        product_code:
+          type: [string, 'null']
+          description: Product bar code.
+          example: "7501234567890"
+        skus:
+          type: array
+          description: All SKUs of the product.
+          items:
+            type: string
+          example: ["SKU-RED-M"]
+        expected_quantity:
+          type: integer
+          description: Units announced for this product.
+          example: 200
+        received_quantity:
+          type: integer
+          description: Units received so far (excludes presale units not yet arrived).
+          example: 198
+
+    WebhookSupplierInvoice:
+      type: object
+      description: A supplier invoice captured at reception.
+      properties:
+        invoice_number:
+          type: string
+          description: Supplier invoice number.
+          example: "F-0001"
