@@ -5,3 +5,9 @@
 # Draft content
 drafts/
 *.draft.mdx
+
+# Legacy Postman collection (reference only, not published)
+legacy/
+
+# OpenAPI sources (build input, not pages)
+openapi-src/

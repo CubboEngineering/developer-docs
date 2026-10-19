@@ -1,0 +1,1292 @@
+paths:
+  /replenishments:
+    post:
+      tags: [Replenishments]
+      operationId: createReplenishment
+      summary: Create a replenishment
+      description: |
+        Announces an inbound shipment (replenishment) of products to one of your store's warehouses.
+        Every line is identified by SKU; all SKUs must already exist in your Cubbo catalog for the store.
+        The replenishment is created in status `REQUESTED`, or `WITHOUT_SCHEDULING` when the target
+        warehouse books receiving appointments natively (you then schedule the appointment separately;
+        the replenishment is not visible to the warehouse's capacity planning until it is scheduled).
+
+        - `warehouse_id` is optional; when omitted the store's first assigned warehouse is used. When
+          sent, the warehouse must be assigned to the store.
+        - Each SKU may appear once. Two different SKUs that point to the same product are refused
+          (except for certain marketplace integrations, where such lines are merged into one and their quantities
+          are added; the first declared `unit_value` is kept, and two different declared values for
+          the same product are refused).
+        - `unit_value` (declared unit cost in the store currency) is optional and must be a plain
+          decimal with at most 2 decimal places, greater than 0 and below the supported ceiling. When
+          omitted, Cubbo falls back to the catalog price wherever a cost is needed (for example on the
+          Brazilian NF-e of entry).
+        - `lots` lets you declare, per SKU, the lots (batches) that will arrive and how many units
+          belong to each. The lot quantities must add up to the line quantity, and the SKU must have a
+          master-box configuration in Cubbo. These expected quantities per lot are what the variance
+          report compares against.
+        - `sell_ahead: true` makes the announced units sellable immediately (before they physically
+          arrive). The warehouse must have a presale location configured; otherwise the request is
+          refused and nothing is created. Sell-ahead replenishments cannot be updated afterwards.
+        - `unique_external_reference: true` makes the call idempotent on `(store_id, external_reference)`:
+          if a non-canceled replenishment with that reference already exists in the store, the API
+          answers 422 with code `REPLENISHMENT_ALREADY_EXISTS` and the existing `replenishment_id`
+          instead of creating a second one. Canceled replenishments do not count. Without the flag,
+          repeated references are accepted (existing behavior).
+        - `inventory_scope` / `is_b2b` decide which sales channel the received stock serves. Omit both
+          to use the store's business model (D2C-only stores receive as `d2c`, B2B-only as `b2b`, and
+          stores with both models as `shared`). A scope incompatible with the store's model is refused.
+        - Brazil: if your store's NF-e (Nota Fiscal eletrônica, the Brazilian fiscal invoice) for
+          inbound stock is issued by your own invoicing provider rather than by Cubbo, you must send
+          `invoice` with the already-issued NF-e (XML and PDF, base64). If Cubbo issues the NF-e for
+          your store, it is generated automatically after the replenishment is created; some marketplace-integrated stores
+          need neither.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReplenishmentCreateRequest'}
+            example:
+              store_id: 1234
+              warehouse_id: 7
+              expected_arrived_at: "2026-11-02T15:00:00Z"
+              notes: "Pallet 2 contains fragile items"
+              external_reference: "PO-0001"
+              unique_external_reference: true
+              sell_ahead: false
+              inventory_scope: d2c
+              products:
+                - sku: "SKU-RED-M"
+                  quantity: 100
+                  unit_value: "12.50"
+                - sku: "SKU-BOX-BLUE"
+                  quantity: 48
+                  lots:
+                    - lot_code: "LOT-2026-01"
+                      quantity: 24
+                      external_reference: "LOT-REF-1"
+                    - lot_code: "LOT-2026-02"
+                      quantity: 24
+                      external_reference: "LOT-REF-2"
+      responses:
+        '201':
+          description: Replenishment created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReplenishmentSummary'}
+              example:
+                id: 55001
+                status: REQUESTED
+                store_id: 1234
+                notes: "Pallet 2 contains fragile items"
+                created_at: "2026-10-12T14:03:11.512Z"
+                expected_arrived_at: "2026-11-02T15:00:00.000Z"
+                sell_ahead: false
+                declared_value: null
+                warehouse_id: 7
+                replenishment_products:
+                  - product_id: 9001
+                    expected_quantity: 100
+                    unit_value: "12.5"
+                    product:
+                      id: 9001
+                      name: "Red T-shirt M"
+                      bar_code: "7501234567890"
+                      is_scannable: true
+                      product_codes:
+                        - {id: 31001, sku: "SKU-RED-M"}
+                  - product_id: 9002
+                    expected_quantity: 48
+                    unit_value: null
+                    product:
+                      id: 9002
+                      name: "Blue box"
+                      bar_code: "7501234567891"
+                      is_scannable: true
+                      product_codes:
+                        - {id: 31002, sku: "SKU-BOX-BLUE"}
+                warehouse:
+                  id: 7
+                  name: "Mexico City"
+                  unique_code: "MX-CDMX-1"
+                  address1: "Av. Ejemplo 123"
+                  address2: null
+                  zip_code: "01000"
+                  city: "Ciudad de México"
+                  state: "CDMX"
+                  country: "MX"
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: |
+            Validation or business error. Most errors are `{error}`. The duplicate-reference refusal
+            (`unique_external_reference: true`) also carries `code` and `context.replenishment_id`.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - {$ref: '#/components/schemas/Error'}
+                  - {$ref: '#/components/schemas/ReplenishmentAlreadyExistsError'}
+              examples:
+                missingParam: {value: {error: "Parameter products is required"}}
+                invalidScope: {value: {error: "Parameter inventory_scope must be within [\"d2c\", \"b2b\", \"shared\"]"}}
+                lotQuantityMismatch: {value: {error: "total quantity for SKU-BOX-BLUE (48) does not match sum of lot quantities (40)"}}
+                unitValueFormat: {value: {error: "unit_value for SKU-RED-M must be a plain decimal number with at most 2 decimal places, such as 12.50"}}
+                unitValueDecimals: {value: {error: "unit_value for SKU-RED-M may have at most 2 decimal places"}}
+                unitValueOutOfRange: {value: {error: "unit_value for SKU-RED-M is out of range (must be below 100000000000000)"}}
+                unitValueNotPositive: {value: {error: "unit_value for SKU-RED-M must be greater than 0"}}
+                unitValueConflict: {value: {error: "unit_value conflict between SKU-RED-M and SKU-RED-M-ALT for the same product"}}
+                storeNotFound: {value: {error: "Couldn't find Store with 'id'=1234"}}
+                externalReferenceRequired: {value: {error: "external_reference is required when unique_external_reference is true"}}
+                alreadyExists:
+                  value:
+                    error: "replenishment with external_reference PO-0001 already exists with id 55001"
+                    code: REPLENISHMENT_ALREADY_EXISTS
+                    context: {replenishment_id: 55001}
+                warehouseNotFound: {value: {error: "Couldn't find Warehouse with 'id'=7"}}
+                warehouseNotAssigned: {value: {error: "warehouse 7 is not assigned to this store"}}
+                invoiceRequired: {value: {error: "'invoice' parameter is required for this store"}}
+                skusNotUnique: {value: {error: "provided skus are not unique"}}
+                skusNotFound: {value: {error: "SKUs not found in cubbo: SKU-UNKNOWN-1, SKU-UNKNOWN-2"}}
+                skusOfSameProduct: {value: {error: "skus of same product were provided, make sure skus belong to different products. Skus of same product: [SKU-RED-M, SKU-RED-M-ALT]"}}
+                masterBoxMissing: {value: {error: "master_box_quantity not found for product SKU-BOX-BLUE"}}
+                noPresaleLocation: {value: {error: "Aborted, no PRESALE location found in warehouse id 7."}}
+                scopeConflict: {value: {error: "Store 1234 is D2C-only; cannot create a b2b receipt"}}
+                storeModelUnset: {value: {error: "Store 1234 has neither b2b nor d2c enabled"}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /replenishments/{replenishment_id}:
+    get:
+      tags: [Replenishments]
+      operationId: getReplenishment
+      summary: Get a replenishment
+      description: |
+        Returns a replenishment with its lines, the quantities received so far, the supplier invoice
+        numbers captured at reception and the documents uploaded during receiving.
+
+        - `replenishment_products[].received_quantity` counts units physically received for the line
+          (counted at the dock, stored, or reserved), so it is `0` until receiving starts and excludes
+          sell-ahead units that have not arrived.
+        - `replenishment_products[].received_by_invoice` splits `received_quantity` by the supplier
+          invoice (factura) number each unit was stamped with at reception. Units received without a
+          captured invoice fall into the `invoice_number: null` bucket, which is listed last. The
+          buckets always add up to `received_quantity`. Supplier invoice capture must be enabled for the
+          warehouse or the store by Cubbo support; otherwise everything lands in the `null` bucket.
+        - `supplier_invoices` lists the distinct supplier invoice numbers captured for this replenishment
+          (the fiscal record, kept even after the units are put away). `supplier_invoice_files` lists the
+          documents uploaded during receiving as short-lived download links (valid for 15 minutes).
+        - `return` is filled only when the replenishment is the reception of a return (`is_return: true`).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: replenishment_id
+          in: path
+          required: true
+          description: Cubbo id of the replenishment.
+          schema: {type: integer}
+          example: 55001
+      responses:
+        '200':
+          description: The replenishment
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Replenishment'}
+              example:
+                id: 55001
+                status: PROCESSING
+                store_id: 1234
+                notes: "Pallet 2 contains fragile items"
+                created_at: "2026-10-12T14:03:11.512Z"
+                expected_arrived_at: "2026-11-02T15:00:00.000Z"
+                sell_ahead: false
+                declared_value: null
+                is_return: false
+                completed_at: null
+                supplier_invoices:
+                  - {invoice_number: "F-111"}
+                  - {invoice_number: "F-222"}
+                supplier_invoice_files:
+                  - url: "https://files.example.com/replenishments/55001/factura.pdf?signature=fake"
+                    filename: "factura.pdf"
+                    content_type: "application/pdf"
+                    byte_size: 48213
+                    expires_at: "2026-10-12T14:18:11Z"
+                return: null
+                replenishment_products:
+                  - product_id: 9001
+                    expected_quantity: 100
+                    unit_value: "12.5"
+                    product:
+                      id: 9001
+                      name: "Red T-shirt M"
+                      bar_code: "7501234567890"
+                      is_scannable: true
+                      product_codes:
+                        - {id: 31001, sku: "SKU-RED-M"}
+                    received_quantity: 80
+                    received_by_invoice:
+                      - {invoice_number: "F-111", quantity: 50}
+                      - {invoice_number: "F-222", quantity: 20}
+                      - {invoice_number: null, quantity: 10}
+                  - product_id: 9002
+                    expected_quantity: 48
+                    unit_value: null
+                    product:
+                      id: 9002
+                      name: "Blue box"
+                      bar_code: "7501234567891"
+                      is_scannable: true
+                      product_codes:
+                        - {id: 31002, sku: "SKU-BOX-BLUE"}
+                    received_quantity: 0
+                    received_by_invoice: []
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: Validation or business error
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              examples:
+                notFound: {value: {error: "no replenishment with id 55001 was found."}}
+                invalidId: {value: {error: "'replenishment_id' is not a valid Integer"}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+    patch:
+      tags: [Replenishments]
+      operationId: updateReplenishment
+      summary: Update a replenishment
+      description: |
+        Updates the notes and the announced lines of a replenishment that has not started receiving.
+
+        - Allowed only while the status is `WITHOUT_SCHEDULING`, `PENDING` or `REQUESTED`. Once the
+          shipment is in transit or at the warehouse the update is refused.
+        - Not available for sell-ahead replenishments, nor for replenishments bound to a Brazilian
+          warehouse (code `br_warehouse_not_supported`): on the Brazilian path the declared values become
+          the NF-e of entry and must not change afterwards.
+        - `products` is a partial update: each listed SKU either replaces the quantity (and, when sent,
+          the `unit_value`) of its existing line, or is added as a new line. Lines you do not list are
+          left untouched; lines cannot be removed through this endpoint. Omitting `unit_value` keeps the
+          stored value.
+        - If the replenishment has a booked receiving appointment at a warehouse with native scheduling
+          and the new quantities need more dock capacity than reserved, Cubbo tries to extend the booked
+          time slots; when they cannot fit, the update is refused with code `reschedule_required` and
+          nothing is changed. Reschedule the appointment first, then retry.
+        - Errors raised by business rules use the `{error, code, context}` envelope (`code` may be an
+          empty string and `context` null); parameter errors use the plain `{error}` envelope.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: replenishment_id
+          in: path
+          required: true
+          description: Cubbo id of the replenishment.
+          schema: {type: integer}
+          example: 55001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReplenishmentUpdateRequest'}
+            example:
+              notes: "Arrives on two pallets"
+              products:
+                - sku: "SKU-RED-M"
+                  quantity: 120
+                  unit_value: "12.50"
+                - sku: "SKU-GREEN-L"
+                  quantity: 30
+      responses:
+        '200':
+          description: Replenishment updated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReplenishmentSummary'}
+              example:
+                id: 55001
+                status: REQUESTED
+                store_id: 1234
+                notes: "Arrives on two pallets"
+                created_at: "2026-10-12T14:03:11.512Z"
+                expected_arrived_at: "2026-11-02T15:00:00.000Z"
+                sell_ahead: false
+                declared_value: null
+                warehouse_id: 7
+                replenishment_products:
+                  - product_id: 9001
+                    expected_quantity: 120
+                    unit_value: "12.5"
+                    product:
+                      id: 9001
+                      name: "Red T-shirt M"
+                      bar_code: "7501234567890"
+                      is_scannable: true
+                      product_codes:
+                        - {id: 31001, sku: "SKU-RED-M"}
+                  - product_id: 9003
+                    expected_quantity: 30
+                    unit_value: null
+                    product:
+                      id: 9003
+                      name: "Green T-shirt L"
+                      bar_code: "7501234567892"
+                      is_scannable: true
+                      product_codes:
+                        - {id: 31003, sku: "SKU-GREEN-L"}
+                warehouse:
+                  id: 7
+                  name: "Mexico City"
+                  unique_code: "MX-CDMX-1"
+                  address1: "Av. Ejemplo 123"
+                  address2: null
+                  zip_code: "01000"
+                  city: "Ciudad de México"
+                  state: "CDMX"
+                  country: "MX"
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: Validation or business error
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - {$ref: '#/components/schemas/Error'}
+                  - {$ref: '#/components/schemas/ReplenishmentUpdateError'}
+              examples:
+                missingParam: {value: {error: "Parameter quantity is required"}}
+                notFound: {value: {error: "Couldn't find Replenishment with 'id'=55001"}}
+                brazilNotSupported:
+                  value: {error: "Replenishment updates via API are not available for Brazilian warehouses", code: br_warehouse_not_supported, context: null}
+                alreadyProcessing:
+                  value: {error: "replenishment 55001 has started processing and cannot be updated. Current status: PROCESSING", code: "", context: null}
+                sellAhead:
+                  value: {error: "replenishment 55001 is sell_ahead and cannot be updated", code: "", context: null}
+                skusNotUnique:
+                  value: {error: "provided skus are not unique", code: "", context: null}
+                skuNotFound:
+                  value: {error: "SKU 'SKU-UNKNOWN-1' doesn't exist in Cubbo", code: "", context: null}
+                skusOfSameProduct:
+                  value: {error: "skus of same product were provided, make sure skus belong to different products. Skus of same product: [SKU-RED-M, SKU-RED-M-ALT]", code: "", context: null}
+                unitValueFormat:
+                  value: {error: "unit_value for SKU-RED-M must be a plain decimal number with at most 2 decimal places, such as 12.50", code: UNIT_VALUE_INVALID_FORMAT, context: null}
+                unitValueOutOfRange:
+                  value: {error: "unit_value for SKU-RED-M is out of range (must be below 100000000000000)", code: UNIT_VALUE_OUT_OF_RANGE, context: null}
+                unitValueNotPositive:
+                  value: {error: "unit_value for SKU-RED-M must be greater than 0", code: UNIT_VALUE_NOT_POSITIVE, context: null}
+                rescheduleRequired:
+                  value:
+                    error: "updated quantities need 12 units but only 8 fit the booked franjas — reschedule the appointment"
+                    code: reschedule_required
+                    context: {replenishment_id: 55001, inbound_appointment_id: 777}
+                appointmentChanged:
+                  value:
+                    error: "appointment 777 changed concurrently — retry the update"
+                    code: reschedule_required
+                    context: {replenishment_id: 55001, inbound_appointment_id: 777}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /replenishments/{replenishment_id}/variance-report:
+    get:
+      tags: [Replenishments]
+      operationId: getReplenishmentVarianceReport
+      summary: Get the variance report of a replenishment
+      description: |
+        Compares, per declared lot, the quantity you announced with the quantity the warehouse actually
+        received. Available only for replenishments that declared expected quantities per lot, either
+        through `products[].lots` on creation or derived from an attached NF-e (see attach-invoice).
+
+        - By default the replenishment must be `COMPLETED`. Send `ignore_not_completed=true` to read a
+          partial report while receiving is still in progress.
+        - `variance` is `received_quantity - expected_quantity`: negative means units are missing,
+          positive means more units than announced were received.
+        - A declared lot that was never matched to a received lot is reported with `lot_id: null`,
+          `received_quantity: 0` and a variance equal to minus its expected quantity.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: replenishment_id
+          in: path
+          required: true
+          description: Cubbo id of the replenishment.
+          schema: {type: integer}
+          example: 55001
+        - name: ignore_not_completed
+          in: query
+          required: false
+          description: When `true`, returns the report even if the replenishment is not `COMPLETED` yet.
+          schema: {type: boolean, default: false}
+          example: false
+      responses:
+        '200':
+          description: One row per declared lot
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReplenishmentVarianceReport'}
+              example:
+                - product_id: 9002
+                  expected_quantity: 24
+                  box_sku: "SKU-BOX-BLUE"
+                  received_quantity: 24
+                  lot_id: 4101
+                  variance: 0
+                - product_id: 9002
+                  expected_quantity: 24
+                  box_sku: "SKU-BOX-BLUE"
+                  received_quantity: 20
+                  lot_id: 4102
+                  variance: -4
+                - product_id: 9004
+                  expected_quantity: 10
+                  box_sku: "SKU-BOX-RED"
+                  received_quantity: 0
+                  lot_id: null
+                  variance: -10
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: Validation or business error
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              examples:
+                notFound: {value: {error: "Couldn't find Replenishment with 'id'=55001"}}
+                notCompleted: {value: {error: "replenishment 55001 is not in COMPLETED"}}
+                notCompatible: {value: {error: "this replenishment is not compatible with variance report, no expected_replenishment_product_quantities were found"}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /replenishments/{replenishment_id}/attach-invoice:
+    post:
+      tags: [Replenishments]
+      operationId: attachReplenishmentInvoice
+      summary: Attach an NF-e issued through Cubbo's Brazilian invoicing provider
+      description: |
+        Brazil only. Registers on the replenishment an NF-e (Nota Fiscal eletrônica, the Brazilian
+        fiscal invoice) that was already authorized through the invoicing provider Cubbo integrates for
+        your store, identified by its 44-digit access key. Cubbo stores the reference as pre-approved and
+        then confirms the document with the provider in the background, downloading its XML and PDF.
+
+        - Exactly one invoice per request (the `invoices` array must contain a single item).
+        - `purpose` says what the document covers: `REPLENISHMENT_INVOICE` for the NF-e of entry of the
+          goods, `REPLENISHMENT_ADJUSTMENT_INVOICE` for an adjustment note. A replenishment can hold only
+          one active invoice per purpose; cancelled invoices do not count, so a cancelled one can be
+          replaced.
+        - If the access key is already registered in Cubbo, no new invoice is created: the existing one
+          is re-synchronized with the provider and the response lists its key under `update_invoice_ids`.
+        - A previously recorded invoice issuing error on the replenishment is cleared.
+        - For `REPLENISHMENT_INVOICE`, Cubbo derives the expected quantities per lot from the invoice,
+          which makes the variance report available for the replenishment.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: replenishment_id
+          in: path
+          required: true
+          description: Cubbo id of the replenishment.
+          schema: {type: integer}
+          example: 55001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReplenishmentAttachInvoiceRequest'}
+            example:
+              invoice_type: WEBMANIA
+              invoices:
+                - key: "00000000000000000000000000000000000000000000"
+                  identifier: "123456"
+                  purpose: REPLENISHMENT_INVOICE
+                  operation_type: ENTRADA
+                  operation_nature: "Remessa para armazenagem"
+      responses:
+        '200':
+          description: |
+            Invoice registered. `new_invoice_ids` holds the ids of the invoices created. When the key was
+            already known, `new_invoice_ids` is empty and `update_invoice_ids` lists the existing keys
+            (comma-separated string) that were re-synchronized instead.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReplenishmentAttachInvoiceResponse'}
+              examples:
+                created: {value: {new_invoice_ids: [8801]}}
+                alreadyKnown: {value: {new_invoice_ids: [], update_invoice_ids: "00000000000000000000000000000000000000000000"}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: Validation or business error
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              examples:
+                missingParam: {value: {error: "Parameter invoices is required"}}
+                badKey: {value: {error: "Parameter key must contain numbers only"}}
+                badPurpose: {value: {error: "Parameter purpose must be within [\"REPLENISHMENT_INVOICE\", \"REPLENISHMENT_ADJUSTMENT_INVOICE\"]"}}
+                unsupportedType: {value: {error: "only WEBMANIA is supported for now"}}
+                notFound: {value: {error: "Couldn't find Replenishment with 'id'=55001"}}
+                tooManyInvoices: {value: {error: "only one invoice is expected per request"}}
+                identifierExists: {value: {error: "some identifiers provided already exist: [\"123456\"]"}}
+                purposeExists: {value: {error: "some invoices with same replenishment and purpose already exist: [\"REPLENISHMENT_INVOICE\"]"}}
+                providerError: {value: {error: "WebmaniaError: NF-e not found"}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /replenishments/{replenishment_id}/invoice-issuing-error:
+    patch:
+      tags: [Replenishments]
+      operationId: updateReplenishmentInvoiceIssuingError
+      summary: Record or clear an invoice issuing error
+      description: |
+        Brazil only. Records on the replenishment the reason your invoicing system could not issue the
+        NF-e for it, so the problem is visible on the replenishment in Cubbo and can be followed up.
+        Send `invoice_issuing_error` with a message to record it, or omit it (or send `null`) to clear a
+        previously recorded error. The error is also cleared automatically when an invoice is attached.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: replenishment_id
+          in: path
+          required: true
+          description: Cubbo id of the replenishment.
+          schema: {type: integer}
+          example: 55001
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReplenishmentInvoiceIssuingErrorRequest'}
+            example:
+              invoice_issuing_error: "SEFAZ rejected the NF-e: recipient CNPJ not registered"
+      responses:
+        '200':
+          description: Error recorded or cleared. Empty body.
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              examples:
+                notFound: {value: {error: "Couldn't find Replenishment with 'id'=55001"}}
+                invalidType: {value: {error: "'invoice_issuing_error' is not a valid String"}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /replenishments/attach-external-invoice:
+    post:
+      # Hidden from the public docs until product approves it. Remove x-excluded to publish.
+      x-excluded: true
+      tags: [Replenishments]
+      operationId: attachReplenishmentExternalInvoice
+      summary: Attach an externally issued NF-e to a replenishment
+      description: |
+        Brazil only. Pushes onto a replenishment an NF-e (Nota Fiscal eletrônica, the Brazilian fiscal
+        invoice) of entry that was issued outside Cubbo, sending the authorized XML. Cubbo stores the
+        document as approved, reads the series and total from the XML, renders the DANFE (printable
+        representation) and keeps it with the replenishment.
+
+        - Available only for stores where Cubbo does not issue the replenishment NF-e (you provide your
+          own). Otherwise the request is refused with code `REPLENISHMENT_NOT_ELIGIBLE_FOR_INVOICE`.
+          Ask Cubbo support to configure this for your store.
+        - The replenishment must belong to one of the stores your API credentials can access; other ids
+          are reported as not found.
+        - `invoice_xml` is the complete authorized NF-e (`nfeProc`), either as raw XML or base64-encoded
+          (a `data:` URI prefix is accepted). The access key embedded in the XML must match `access_key`.
+        - Idempotent: if the replenishment already has an approved replenishment NF-e, that invoice is
+          returned and nothing new is created. An access key already registered on another document is
+          refused.
+        - If another attach for the same replenishment is still being processed, the API answers 202 with
+          a `transaction_id`; retry after a moment.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReplenishmentExternalInvoiceRequest'}
+            example:
+              replenishment_id: 55001
+              access_key: "00000000000000000000000000000000000000000000"
+              invoice_number: "123"
+              invoice_xml: "<?xml version=\"1.0\" encoding=\"UTF-8\"?><nfeProc xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"4.00\">...</nfeProc>"
+              message: "NF-e issued by our ERP"
+      responses:
+        '200':
+          description: NF-e attached (or already attached)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReplenishmentExternalInvoiceResponse'}
+              example:
+                invoice_id: 8802
+                key: "00000000000000000000000000000000000000000000"
+                status: APPROVED
+        '202':
+          description: Another attach for this replenishment is still processing; retry later.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReplenishmentExternalInvoiceAccepted'}
+              example:
+                message: "Accepted, another invoice attach for this replenishment is still processing."
+                transaction_id: "a1b2c3d4"
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: Validation or business error. `code` is present only for coded business errors.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReplenishmentCodedError'}
+              examples:
+                missingParam: {value: {error: "Parameter invoice_xml is required"}}
+                badAccessKey: {value: {error: "Parameter access_key must be the 44-digit NF-e access key"}}
+                notFound: {value: {error: "no replenishment found with replenishment_id 55001"}}
+                notEligible:
+                  value: {error: "replenishment 55001 is not eligible for an external invoice", code: REPLENISHMENT_NOT_ELIGIBLE_FOR_INVOICE}
+                keyMismatch: {value: {error: "access_key does not match the NF-e XML"}}
+                keyExists: {value: {error: "an invoice with key 00000000000000000000000000000000000000000000 already exists"}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+components:
+  schemas:
+    ReplenishmentStatus:
+      type: string
+      description: |
+        Lifecycle status of a replenishment.
+        - `WITHOUT_SCHEDULING`: created at a warehouse that books receiving appointments natively, but no appointment has been scheduled yet.
+        - `PENDING`: registered but not yet requested to the warehouse (pre-arrival).
+        - `REQUESTED`: announced to the warehouse and awaiting arrival; the initial status at warehouses without native appointment scheduling, and the status after an appointment is booked.
+        - `IN_TRANSIT`: the shipment is on its way to the warehouse.
+        - `RECEIVED`: the shipment was recorded at the dock; counting has not started.
+        - `PROCESSING`: the warehouse is receiving and counting the units (stock has arrived).
+        - `IN_PUTAWAY`: received units are being placed in storage locations.
+        - `COMPLETED`: receiving and putaway finished; `completed_at` is set.
+        - `CANCELED`: the replenishment was canceled; it no longer counts for external-reference uniqueness.
+      enum: [WITHOUT_SCHEDULING, PENDING, REQUESTED, IN_TRANSIT, RECEIVED, PROCESSING, IN_PUTAWAY, COMPLETED, CANCELED]
+      example: REQUESTED
+
+    ReplenishmentLineProduct:
+      type: object
+      description: Catalog product referenced by a replenishment line.
+      properties:
+        id:
+          type: integer
+          description: Cubbo product id.
+          example: 9001
+        name:
+          type: string
+          description: Product name.
+          example: "Red T-shirt M"
+        bar_code:
+          type: [string, 'null']
+          description: Barcode (UPC/EAN) of the product.
+          example: "7501234567890"
+        is_scannable:
+          type: boolean
+          description: Whether units of this product are identified by scanning at the warehouse.
+          example: true
+        product_codes:
+          type: array
+          description: SKUs registered for the product.
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                description: Id of the SKU record.
+                example: 31001
+              sku:
+                type: string
+                description: SKU.
+                example: "SKU-RED-M"
+
+    ReplenishmentProduct:
+      type: object
+      description: One announced line of a replenishment.
+      properties:
+        product_id:
+          type: integer
+          description: Cubbo product id of the line.
+          example: 9001
+        expected_quantity:
+          type: integer
+          description: Number of units announced for this product.
+          example: 100
+        unit_value:
+          type: [string, 'null']
+          description: Declared unit cost in the store currency, as a decimal string; `null` when not declared.
+          example: "12.5"
+        product:
+          $ref: '#/components/schemas/ReplenishmentLineProduct'
+
+    ReplenishmentReceivedByInvoice:
+      type: object
+      description: Units of a line received under one supplier invoice.
+      properties:
+        invoice_number:
+          type: [string, 'null']
+          description: Supplier invoice (factura) number captured at reception; `null` for units received without a captured invoice.
+          example: "F-111"
+        quantity:
+          type: integer
+          description: Units of the product received under this invoice.
+          example: 50
+
+    ReplenishmentProductReceived:
+      allOf:
+        - $ref: '#/components/schemas/ReplenishmentProduct'
+        - type: object
+          properties:
+            received_quantity:
+              type: integer
+              description: Units of the product physically received so far (counted, stored or reserved).
+              example: 80
+            received_by_invoice:
+              type: array
+              description: Breakdown of `received_quantity` by captured supplier invoice; the `null` bucket is listed last. Empty when nothing has been received.
+              items: {$ref: '#/components/schemas/ReplenishmentReceivedByInvoice'}
+
+    ReplenishmentSupplierInvoice:
+      type: object
+      description: A supplier invoice number captured during receiving.
+      properties:
+        invoice_number:
+          type: string
+          description: Normalized supplier invoice (factura) number.
+          example: "F-111"
+
+    ReplenishmentSupplierInvoiceFile:
+      type: object
+      description: A document uploaded during receiving, served as a short-lived download link.
+      properties:
+        url:
+          type: string
+          description: Download URL, valid until `expires_at` (15 minutes after the response was built).
+          example: "https://files.example.com/replenishments/55001/factura.pdf?signature=fake"
+        filename:
+          type: string
+          description: Original file name.
+          example: "factura.pdf"
+        content_type:
+          type: string
+          description: MIME type of the file.
+          example: "application/pdf"
+        byte_size:
+          type: integer
+          description: File size in bytes.
+          example: 48213
+        expires_at:
+          type: string
+          format: date-time
+          description: Moment after which `url` stops working.
+          example: "2026-10-12T14:18:11Z"
+
+    ReplenishmentReturn:
+      type: object
+      description: The return this replenishment receives, when the replenishment is the reception of a return.
+      properties:
+        id:
+          type: integer
+          description: Return id.
+          example: 7301
+        returned_order_id:
+          type: [integer, 'null']
+          description: Id of the order being returned.
+          example: 41002
+        created_order_id:
+          type: [integer, 'null']
+          description: Id of the replacement order created for the return, if any.
+          example: null
+
+    ReplenishmentWarehouse:
+      type: object
+      description: Destination warehouse of the replenishment.
+      properties:
+        id: {type: integer, description: Warehouse id., example: 7}
+        name: {type: string, description: Warehouse name., example: "Mexico City"}
+        unique_code: {type: [string, 'null'], description: Warehouse code., example: "MX-CDMX-1"}
+        address1: {type: [string, 'null'], description: Street address., example: "Av. Ejemplo 123"}
+        address2: {type: [string, 'null'], description: Address complement., example: null}
+        zip_code: {type: [string, 'null'], description: Postal code., example: "01000"}
+        city: {type: [string, 'null'], description: City., example: "Ciudad de México"}
+        state: {type: [string, 'null'], description: State or province., example: "CDMX"}
+        country: {type: [string, 'null'], description: "Country code (`MX`, `BR`, `CO`, ...).", example: "MX"}
+
+    ReplenishmentSummary:
+      type: object
+      description: Replenishment as returned by create and update.
+      properties:
+        id:
+          type: integer
+          description: Replenishment id; use it as `replenishment_id` on the other endpoints.
+          example: 55001
+        status:
+          $ref: '#/components/schemas/ReplenishmentStatus'
+        store_id:
+          type: integer
+          description: Store the replenishment belongs to.
+          example: 1234
+        notes:
+          type: [string, 'null']
+          description: Free-text notes for the warehouse.
+          example: "Pallet 2 contains fragile items"
+        created_at:
+          type: string
+          format: date-time
+          description: Creation time.
+          example: "2026-10-12T14:03:11.512Z"
+        expected_arrived_at:
+          type: [string, 'null']
+          format: date-time
+          description: Expected arrival date declared on creation.
+          example: "2026-11-02T15:00:00.000Z"
+        sell_ahead:
+          type: [boolean, 'null']
+          description: Whether the announced units were made sellable before arrival.
+          example: false
+        declared_value:
+          type: [string, 'null']
+          description: Declared total value of the shipment, as a decimal string; not settable through this API, so usually `null`.
+          example: null
+        warehouse_id:
+          type: integer
+          description: Destination warehouse id.
+          example: 7
+        replenishment_products:
+          type: array
+          description: Announced lines.
+          items: {$ref: '#/components/schemas/ReplenishmentProduct'}
+        warehouse:
+          $ref: '#/components/schemas/ReplenishmentWarehouse'
+
+    Replenishment:
+      type: object
+      description: Replenishment as returned by GET, including reception progress and supplier invoices.
+      properties:
+        id:
+          type: integer
+          description: Replenishment id.
+          example: 55001
+        status:
+          $ref: '#/components/schemas/ReplenishmentStatus'
+        store_id:
+          type: integer
+          description: Store the replenishment belongs to.
+          example: 1234
+        notes:
+          type: [string, 'null']
+          description: Free-text notes for the warehouse.
+          example: "Pallet 2 contains fragile items"
+        created_at:
+          type: string
+          format: date-time
+          description: Creation time.
+          example: "2026-10-12T14:03:11.512Z"
+        expected_arrived_at:
+          type: [string, 'null']
+          format: date-time
+          description: Expected arrival date declared on creation.
+          example: "2026-11-02T15:00:00.000Z"
+        sell_ahead:
+          type: [boolean, 'null']
+          description: Whether the announced units were made sellable before arrival.
+          example: false
+        declared_value:
+          type: [string, 'null']
+          description: Declared total value of the shipment, as a decimal string; usually `null`.
+          example: null
+        is_return:
+          type: boolean
+          description: "`true` when this replenishment is the reception of a return."
+          example: false
+        completed_at:
+          type: [string, 'null']
+          format: date-time
+          description: When receiving finished; `null` until the status is `COMPLETED`.
+          example: null
+        supplier_invoices:
+          type: array
+          description: Distinct supplier invoice numbers captured during receiving, sorted; empty when none were captured.
+          items: {$ref: '#/components/schemas/ReplenishmentSupplierInvoice'}
+        supplier_invoice_files:
+          type: array
+          description: Documents uploaded during receiving (invoice PDF and supporting files) as short-lived links; empty when none.
+          items: {$ref: '#/components/schemas/ReplenishmentSupplierInvoiceFile'}
+        return:
+          oneOf:
+            - $ref: '#/components/schemas/ReplenishmentReturn'
+            - type: 'null'
+          description: The return being received, or `null` for a regular inbound replenishment.
+        replenishment_products:
+          type: array
+          description: Announced lines with reception progress.
+          items: {$ref: '#/components/schemas/ReplenishmentProductReceived'}
+
+    ReplenishmentCreateLot:
+      type: object
+      description: A lot (batch) expected for a line.
+      required: [lot_code, quantity, external_reference]
+      properties:
+        lot_code:
+          type: string
+          description: Lot code as printed on the goods.
+          example: "LOT-2026-01"
+        quantity:
+          type: integer
+          description: Units of the line expected in this lot.
+          example: 24
+        external_reference:
+          type: string
+          description: Your reference for this lot line.
+          example: "LOT-REF-1"
+
+    ReplenishmentCreateProduct:
+      type: object
+      description: A line to announce.
+      required: [sku, quantity]
+      properties:
+        sku:
+          type: string
+          description: SKU registered in the store's catalog. Each SKU may appear once.
+          example: "SKU-RED-M"
+        quantity:
+          type: integer
+          description: Units announced. When `lots` is sent, it must equal the sum of the lot quantities.
+          example: 100
+        unit_value:
+          type: [number, string]
+          description: Optional declared unit cost in the store currency. Plain decimal (digits, optional dot and up to 2 decimals, e.g. `12.50` or `"12.50"`), greater than 0 and below the supported ceiling. Omit to leave the line without a declared cost.
+          example: "12.50"
+        lots:
+          type: array
+          description: Expected lots for this SKU. Requires a master-box configuration for the SKU in Cubbo; the quantities must add up to `quantity`.
+          items: {$ref: '#/components/schemas/ReplenishmentCreateLot'}
+
+    ReplenishmentCreateInvoice:
+      type: object
+      description: Already-issued NF-e of entry, required for Brazilian stores whose NF-e is issued by their own provider instead of Cubbo.
+      required: [key, xml_base64, pdf_base64]
+      properties:
+        key:
+          type: string
+          description: 44-digit NF-e access key.
+          example: "00000000000000000000000000000000000000000000"
+        operation_type:
+          type: string
+          description: Whether the document is incoming or outgoing from the issuer's point of view. Defaults to `OUTGOING` when omitted; send `INCOMING` for an NF-e of entry.
+          enum: [INCOMING, OUTGOING]
+          default: OUTGOING
+          example: INCOMING
+        identifier:
+          type: string
+          description: Your identifier for the document.
+          example: "NFE-123456"
+        serie:
+          type: string
+          description: NF-e series.
+          example: "1"
+        number:
+          type: string
+          description: NF-e number.
+          example: "123456"
+        total_value:
+          type: [number, string]
+          description: Total value of the NF-e.
+          example: "1250.00"
+        operation_nature:
+          type: string
+          description: Nature of the operation (natureza da operação) printed on the NF-e.
+          example: "Remessa para armazenagem"
+        xml_base64:
+          type: string
+          description: Authorized NF-e XML, base64-encoded.
+          example: "PD94bWwgdmVyc2lvbj0iMS4wIj8+..."
+        pdf_base64:
+          type: string
+          description: DANFE PDF, base64-encoded.
+          example: "JVBERi0xLjQK..."
+
+    ReplenishmentCreateRequest:
+      type: object
+      required: [store_id, products]
+      properties:
+        store_id:
+          type: integer
+          description: Store that owns the stock.
+          example: 1234
+        warehouse_id:
+          type: integer
+          description: Destination warehouse. Must be assigned to the store. Defaults to the store's first warehouse.
+          example: 7
+        expected_arrived_at:
+          type: string
+          format: date-time
+          description: Expected arrival date (ISO 8601).
+          example: "2026-11-02T15:00:00Z"
+        notes:
+          type: string
+          description: Free-text notes for the warehouse.
+          example: "Pallet 2 contains fragile items"
+        external_reference:
+          type: string
+          description: Your reference for the shipment (purchase order, transfer number...).
+          example: "PO-0001"
+        unique_external_reference:
+          type: boolean
+          description: When `true`, `external_reference` is required and the create is idempotent per store on that reference (see endpoint description).
+          default: false
+          example: true
+        sell_ahead:
+          type: boolean
+          description: When `true`, the announced units become sellable immediately. Such replenishments cannot be updated later.
+          default: false
+          example: false
+        is_b2b:
+          type: boolean
+          description: "Legacy way to choose the inventory scope: `true` is equivalent to `inventory_scope: b2b`, `false` to `d2c`. Ignored when `inventory_scope` is sent."
+          example: false
+        inventory_scope:
+          type: string
+          description: Which sales channel the received stock serves. `shared` is only valid for stores that operate both B2B and D2C. Omit to use the store's default.
+          enum: [d2c, b2b, shared]
+          example: d2c
+        products:
+          type: array
+          description: Lines to announce (at least one).
+          minItems: 1
+          items: {$ref: '#/components/schemas/ReplenishmentCreateProduct'}
+        invoice:
+          $ref: '#/components/schemas/ReplenishmentCreateInvoice'
+
+    ReplenishmentUpdateProduct:
+      type: object
+      description: A line to set on the replenishment.
+      required: [sku, quantity]
+      properties:
+        sku:
+          type: string
+          description: SKU of an existing line to change, or of a new line to add.
+          example: "SKU-RED-M"
+        quantity:
+          type: integer
+          description: New announced quantity for the line.
+          example: 120
+        unit_value:
+          type: [number, string]
+          description: Optional declared unit cost (same rules as on create). Omit to keep the stored value.
+          example: "12.50"
+
+    ReplenishmentUpdateRequest:
+      type: object
+      properties:
+        notes:
+          type: string
+          description: New notes. Omitted or empty keeps the current notes.
+          example: "Arrives on two pallets"
+        products:
+          type: array
+          description: Lines to change or add. Lines not listed are left untouched.
+          items: {$ref: '#/components/schemas/ReplenishmentUpdateProduct'}
+
+    ReplenishmentUpdateError:
+      type: object
+      description: Business error envelope of the update endpoint.
+      properties:
+        error:
+          type: string
+          description: Human-readable message.
+          example: "replenishment 55001 is sell_ahead and cannot be updated"
+        code:
+          type: string
+          description: Machine-readable code, or an empty string when the error has none. Known codes include `br_warehouse_not_supported`, `reschedule_required`, `UNIT_VALUE_INVALID_FORMAT`, `UNIT_VALUE_OUT_OF_RANGE`, `UNIT_VALUE_NOT_POSITIVE`.
+          example: ""
+        context:
+          type: [object, 'null']
+          description: Extra data for the code (for `reschedule_required`, `replenishment_id` and `inbound_appointment_id`).
+          example: null
+
+    ReplenishmentAlreadyExistsError:
+      type: object
+      description: Returned by create when `unique_external_reference` is `true` and the reference is already in use in the store.
+      properties:
+        error:
+          type: string
+          description: Human-readable message.
+          example: "replenishment with external_reference PO-0001 already exists with id 55001"
+        code:
+          type: string
+          description: Always `REPLENISHMENT_ALREADY_EXISTS`.
+          example: REPLENISHMENT_ALREADY_EXISTS
+        context:
+          type: object
+          properties:
+            replenishment_id:
+              type: integer
+              description: Id of the existing replenishment holding the reference.
+              example: 55001
+
+    ReplenishmentCodedError:
+      type: object
+      description: Error envelope with an optional machine-readable code.
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable message.
+          example: "replenishment 55001 is not eligible for an external invoice"
+        code:
+          type: string
+          description: Machine-readable code, present only for coded business errors.
+          example: REPLENISHMENT_NOT_ELIGIBLE_FOR_INVOICE
+
+    ReplenishmentInvoice:
+      type: object
+      description: An NF-e authorized through the invoicing provider Cubbo integrates for your store.
+      required: [key, identifier, purpose, operation_type, operation_nature]
+      properties:
+        key:
+          type: string
+          description: 44-digit NF-e access key (digits only).
+          pattern: '^[0-9]{44}$'
+          example: "00000000000000000000000000000000000000000000"
+        identifier:
+          type: string
+          description: Your identifier for the document (typically the NF-e number). Must not be in use by another active invoice.
+          example: "123456"
+        purpose:
+          type: string
+          description: What the document covers.
+          enum: [REPLENISHMENT_INVOICE, REPLENISHMENT_ADJUSTMENT_INVOICE]
+          example: REPLENISHMENT_INVOICE
+        operation_type:
+          type: string
+          description: Direction of the operation as printed on the NF-e (`ENTRADA` = incoming, `SAIDA` = outgoing).
+          enum: [SAIDA, ENTRADA]
+          example: ENTRADA
+        operation_nature:
+          type: string
+          description: Nature of the operation (natureza da operação) printed on the NF-e.
+          example: "Remessa para armazenagem"
+
+    ReplenishmentAttachInvoiceRequest:
+      type: object
+      required: [invoices]
+      properties:
+        invoice_type:
+          type: string
+          description: Invoicing provider that authorized the document. Only `WEBMANIA` is accepted today.
+          enum: [WEBMANIA]
+          default: WEBMANIA
+          example: WEBMANIA
+        invoices:
+          type: array
+          description: Exactly one invoice.
+          minItems: 1
+          maxItems: 1
+          items: {$ref: '#/components/schemas/ReplenishmentInvoice'}
+
+    ReplenishmentAttachInvoiceResponse:
+      type: object
+      properties:
+        new_invoice_ids:
+          type: array
+          description: Ids of the invoices created; empty when the key was already registered.
+          items: {type: integer}
+          example: [8801]
+        update_invoice_ids:
+          type: string
+          description: Present only when the key was already registered; comma-separated list of the existing keys that were re-synchronized.
+          example: "00000000000000000000000000000000000000000000"
+
+    ReplenishmentExternalInvoiceRequest:
+      type: object
+      required: [replenishment_id, invoice_xml, access_key, invoice_number]
+      properties:
+        replenishment_id:
+          type: integer
+          description: Replenishment to attach the NF-e to.
+          example: 55001
+        invoice_xml:
+          type: string
+          description: Complete authorized NF-e XML (`nfeProc`), raw or base64-encoded. Must not be blank.
+          example: "<?xml version=\"1.0\" encoding=\"UTF-8\"?><nfeProc ...>...</nfeProc>"
+        access_key:
+          type: string
+          description: 44-digit NF-e access key; must match the key inside the XML.
+          pattern: '^[0-9]{44}$'
+          example: "00000000000000000000000000000000000000000000"
+        invoice_number:
+          type: string
+          description: NF-e number. Must not be blank.
+          example: "123"
+        message:
+          type: string
+          description: Optional note stored with the invoice.
+          example: "NF-e issued by our ERP"
+        invoice_type:
+          type: string
+          description: Source of the document. Only `IOTA` is accepted today.
+          enum: [IOTA]
+          default: IOTA
+          example: IOTA
+
+    ReplenishmentExternalInvoiceResponse:
+      type: object
+      properties:
+        invoice_id:
+          type: integer
+          description: Id of the invoice in Cubbo.
+          example: 8802
+        key:
+          type: string
+          description: NF-e access key.
+          example: "00000000000000000000000000000000000000000000"
+        status:
+          type: string
+          description: Invoice status; `APPROVED` for an imported NF-e.
+          example: APPROVED
+
+    ReplenishmentExternalInvoiceAccepted:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Explanation of the deferred processing.
+          example: "Accepted, another invoice attach for this replenishment is still processing."
+        transaction_id:
+          type: string
+          description: Identifier of the attach still in progress.
+          example: "a1b2c3d4"
+
+    ReplenishmentInvoiceIssuingErrorRequest:
+      type: object
+      properties:
+        invoice_issuing_error:
+          type: [string, 'null']
+          description: Reason the NF-e could not be issued. Omit or send `null` to clear the recorded error.
+          example: "SEFAZ rejected the NF-e: recipient CNPJ not registered"
+
+    ReplenishmentVarianceReportRow:
+      type: object
+      description: Expected versus received quantity for one declared lot.
+      properties:
+        product_id:
+          type: integer
+          description: Cubbo product id.
+          example: 9002
+        expected_quantity:
+          type: integer
+          description: Units announced for this lot.
+          example: 24
+        box_sku:
+          type: string
+          description: SKU the lot was declared under.
+          example: "SKU-BOX-BLUE"
+        received_quantity:
+          type: integer
+          description: Units received for the lot; `0` when the lot was never matched.
+          example: 20
+        lot_id:
+          type: [integer, 'null']
+          description: Id of the received lot in Cubbo; `null` when no received lot matched the declaration.
+          example: 4102
+        variance:
+          type: integer
+          description: "`received_quantity - expected_quantity`."
+          example: -4
+
+    ReplenishmentVarianceReport:
+      type: array
+      description: One row per declared lot.
+      items: {$ref: '#/components/schemas/ReplenishmentVarianceReportRow'}

@@ -1,0 +1,2538 @@
+paths:
+  /auth/token:
+    post:
+      tags:
+        - Authentication
+      operationId: createAuthToken
+      summary: Obtain an access token
+      description: |
+        Exchanges your API credential (`client_id` and `client_secret`) for a Bearer token that
+        every other endpoint of this API requires in the `Authorization: Bearer <token>` header.
+        Tokens are valid for `expires_in` seconds (24 hours by default). Request one token and
+        reuse it until it expires; do not request a new token on every call.
+
+        - Only the `client_credentials` grant is supported.
+        - Rate limit: 60 requests per minute per `client_id` on this endpoint. Exceeding it
+          returns HTTP 429 with a `Retry-After` header. Every other `/v1` endpoint shares a
+          separate limit of 600 requests per minute per API account.
+        - Store-scoped endpoints (`PATCH /store`, `POST /store/fiscal-account`,
+          `POST /store/digital-certificate`) derive the store from the credential used to obtain
+          the token, so authenticate with the credential of the store you want to configure.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthTokenRequest"
+            example:
+              client_id: 0f1e2d3c-0000-4000-8000-000000001234
+              client_secret: <your-client-secret>
+              expires_in: 86400
+              grant_type: client_credentials
+      responses:
+        "201":
+          description: Token issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokenResponse"
+              example:
+                token: <jwt-access-token>
+                expires_in: 86400
+                type: Bearer
+        "400":
+          description: The request body is not valid JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: Error occurred while parsing request parameters
+        "401":
+          description: The credential pair is unknown or the secret does not match
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnauthorizedError"
+              example:
+                error: Unauthorized
+                message: invalid credentials
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missingClientId:
+                  value:
+                    error: Parameter client_id is required
+                missingClientSecret:
+                  value:
+                    error: Parameter client_secret is required
+                expiresInOutOfRange:
+                  value:
+                    error: Parameter expires_in cannot be greater than 86400
+                unsupportedGrantType:
+                  value:
+                    error: Parameter grant_type must be within ["client_credentials"]
+        "429":
+          description: More than 60 token requests in one minute for this `client_id`
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying (the length of the throttle window, 60)
+              schema:
+                type: integer
+                example: 60
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: Too many requests. Please slow down and try again later.
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security: []
+  /stores:
+    post:
+      tags:
+        - Stores
+      operationId: createStore
+      summary: Create a store from an existing one
+      description: |
+        Creates a new store in the same account as an existing store (`source_store_id`) used as
+        a template. The new store inherits the source store's billing configuration and, unless
+        you override them, its store type and warehouse. Your credential must have access to the
+        source store, and the source store must already have a billing configuration.
+
+        - Send `source_shipping_group_ids` to copy specific shipping groups from the source store
+          instead of receiving the country defaults. Doing so also creates an Open API
+          integration for the new store and returns its credentials once in
+          `open_api_integration`. Without `source_shipping_group_ids` no integration is created,
+          the response has no `open_api_integration` key, and the store-scoped endpoints
+          (`PATCH /store`, fiscal account, digital certificate) cannot be used for it.
+        - `default_shipping_group_id` is required whenever `source_shipping_group_ids` is sent;
+          it must be one of the copied ids and must not be a group with only international
+          shipping methods. It becomes the fallback for orders that arrive without a recognized
+          shipping method.
+        - `webhook_consumer_url` and `webhook_feeds` are only accepted together with
+          `source_shipping_group_ids`. The URL is validated for format only (https, real host, no
+          raw IP) and is not probed. When omitted, no webhook signing secret is issued.
+        - The returned `client_secret` and `webhook_consumer_secret` are shown only in this
+          response. The credential grants access to every store of the same account, so treat it
+          as an account-level secret.
+        - The whole operation is transactional: on any validation failure nothing is created.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StoreCreateRequest"
+            example:
+              name: Partner Store SP
+              source_store_id: 1234
+              created_by_email: integrations@example.com
+              store_type: ALL_SERVICES
+              description: Store provisioned via API
+              source_shipping_group_ids:
+                - 101
+                - 102
+              default_shipping_group_id: 101
+              webhook_consumer_url: https://example.com/cubbo/webhooks
+              webhook_feeds:
+                - order_status
+                - inventory_movement
+                - replenishment_status
+      responses:
+        "201":
+          description: >-
+            Store created. The body is the full store record plus, when an integration was created, its
+            credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoreCreated"
+              example:
+                id: 4821
+                name: Partner Store SP
+                description: Store provisioned via API
+                created_at: "2026-09-03T14:02:11.000Z"
+                updated_at: "2026-09-03T14:02:11.000Z"
+                tax_id: null
+                invoice_customization: {}
+                state: null
+                tax_regime: null
+                tax_company_name: null
+                tax_address: null
+                tax_address_number: null
+                tax_address_neighborhood: null
+                tax_city: null
+                tax_zipcode: null
+                tax_state_phone: null
+                tax_state_registration: null
+                store_type: ALL_SERVICES
+                b2b: false
+                d2c: true
+                skip_product_lot_in_returns: null
+                receive_only_complete_returns: null
+                return_inspection_enabled: null
+                requires_stock_only_from_confirmed_replenishments: false
+                has_store_branches: false
+                is_oxxo_store: false
+                enable_replenishment_invoices: null
+                enable_removal_order_invoices: null
+                enable_manual_client_invoice: false
+                enable_b2b_cnpj_client_invoice: false
+                account:
+                  id: 900
+                  name: Partner Ltd
+                  account_type: COMPANY
+                warehouses:
+                  - id: 232
+                    name: CD Sao Paulo
+                    unique_code: SP1
+                open_api_integration:
+                  client_id: b6e3a1f0-1234-4c9a-9a11-000000000001
+                  client_secret: <client-secret-shown-once>
+                  webhook_consumer_url: https://example.com/cubbo/webhooks
+                  webhook_feeds:
+                    - order_status
+                    - inventory_movement
+                    - replenishment_status
+                  webhook_consumer_secret: <webhook-secret-shown-once>
+                  webhook_consumer_secret_reason: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          description: Validation or business error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missingName:
+                  value:
+                    error: Parameter name is required
+                sourceStoreNotFound:
+                  value:
+                    error: source store 1234 not found
+                creatorNotFound:
+                  value:
+                    error: No user with email integrations@example.com found in the source store's account
+                warehouseNotFound:
+                  value:
+                    error: warehouse 55 not found
+                warehouseNotAssigned:
+                  value:
+                    error: warehouse 55 is not assigned to the source store
+                noWarehouse:
+                  value:
+                    error: no warehouse available for the new store
+                invalidStoreType:
+                  value:
+                    error: "Invalid store_type. Valid options are: ALL_SERVICES, PICK_AND_SHIP, DEMO_ALL_SERVICES"
+                defaultGroupRequiresCopy:
+                  value:
+                    error: default_shipping_group_id requires source_shipping_group_ids
+                webhookUrlRequiresCopy:
+                  value:
+                    error: webhook_consumer_url requires source_shipping_group_ids
+                webhookFeedsRequireCopy:
+                  value:
+                    error: webhook_feeds requires source_shipping_group_ids
+                webhookFeedsRequireUrl:
+                  value:
+                    error: webhook_feeds requires webhook_consumer_url
+                defaultGroupRequired:
+                  value:
+                    error: default_shipping_group_id is required with source_shipping_group_ids
+                defaultGroupNotInList:
+                  value:
+                    error: default_shipping_group_id must be one of source_shipping_group_ids
+                defaultGroupInternational:
+                  value:
+                    error: default_shipping_group_id cannot be a shipping group with international shipping methods
+                invalidWebhookUrl:
+                  value:
+                    error: webhook_consumer_url must be https
+                invalidWebhookFeed:
+                  value:
+                    error: >-
+                      Parameter webhook_feeds[1] must be within ["order_status", "inventory_movement",
+                      "replenishment_status"]
+                noShippingGroupsFound:
+                  value:
+                    error: No shipping groups found on source store 1234 for the given ids
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /store:
+    patch:
+      tags:
+        - Stores
+      operationId: updateStore
+      summary: Update your own store
+      description: |
+        Partially updates the store bound to your credential. No store id is accepted: the store
+        is derived from the Open API integration credential used to obtain the token, so this
+        endpoint only works with a token issued from the credential returned by `POST /stores`
+        (or any other store-bound integration credential). Only the fields present in the body
+        are written; only the store's identity and fiscal fields can be edited.
+
+        - At least one editable field must be present, otherwise the request is rejected.
+        - `tax_regime` is case-insensitive and normalized to upper case; values outside the
+          accepted set are rejected.
+        - `state` is normalized to upper case. For stores operating in Brazil it must be a valid
+          two-letter UF code (for example `SP`); for other countries it is stored as sent.
+        - `invoice_customization` replaces the current value (no merge). Only known NF-e
+          purposes are kept; a blank object, or one containing only unknown purposes, is treated
+          as if the field was not sent and does not clear the existing customization.
+        - Unknown or non-editable fields (such as `account_id` or `store_type`) are silently
+          ignored.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StoreUpdateRequest"
+            example:
+              tax_company_name: Partner Store SP LTDA
+              tax_address: Av. Paulista
+              tax_address_number: "1000"
+              tax_city: Sao Paulo
+              state: SP
+      responses:
+        "200":
+          description: Store updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Store"
+              example:
+                id: 4821
+                name: Partner Store SP
+                description: Store provisioned via API
+                created_at: "2026-09-03T14:02:11.000Z"
+                updated_at: "2026-09-03T14:05:47.000Z"
+                tax_id: null
+                invoice_customization: {}
+                state: SP
+                tax_regime: null
+                tax_company_name: Partner Store SP LTDA
+                tax_address: Av. Paulista
+                tax_address_number: "1000"
+                tax_address_neighborhood: null
+                tax_city: Sao Paulo
+                tax_zipcode: null
+                tax_state_phone: null
+                tax_state_registration: null
+                store_type: ALL_SERVICES
+        "401":
+          description: Missing or invalid token, or the credential is not bound to a store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnauthorizedError"
+              examples:
+                invalidToken:
+                  value:
+                    error: Unauthorized
+                    message: invalid token
+                notBoundToStore:
+                  value:
+                    error: Unauthorized
+                    message: credential is not bound to a store
+        "422":
+          description: Validation or business error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                noFields:
+                  value:
+                    error: no updatable fields provided
+                invalidTaxRegime:
+                  value:
+                    error: "tax_regime must be one of: SIMPLES_NACIONAL, LUCRO_REAL, LUCRO_PRESUMIDO."
+                invalidState:
+                  value:
+                    error: state must be a two-letter Brazilian UF code (e.g. SP).
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /store/fiscal-account:
+    post:
+      tags:
+        - Stores
+      operationId: provisionStoreFiscalAccount
+      summary: Provision the store's fiscal account (Brazil)
+      description: |
+        Brazil only. Creates the store's electronic invoicing account and registers its company
+        data so the store can later upload a digital certificate and issue NF-e (Nota Fiscal
+        Eletronica, the Brazilian electronic invoice). The store is derived from the credential
+        used to obtain the token; no store id is accepted.
+
+        - Idempotent: if the store already has a fiscal account, the account is not created
+          again; the company data is re-sent and `status` comes back as `updated` instead of
+          `created`. Retrying after a partial failure is safe.
+        - The company data is also copied onto the store's own fiscal fields (the ones
+          `PATCH /store` edits), but only where they are still blank. `mirrored_fields` lists
+          what was written; `skipped_fields` lists what already had a value and was left alone.
+        - `cnpj` and `tax_regime` are identity fields: if the store already holds a different
+          value for either (from an earlier call or from `PATCH /store`), the request is rejected
+          instead of overwriting it. Resubmitting the same value is not a conflict. For this
+          reason, call this endpoint before setting those fields through `PATCH /store`.
+        - `address.state` must be a two-letter Brazilian UF code; it is validated before the
+          account is created.
+        - The CNPJ (Cadastro Nacional da Pessoa Juridica, the Brazilian company tax id) is
+          accepted with or without punctuation and stored on the store as digits only.
+        - Provider credentials are never returned.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FiscalAccountRequest"
+            example:
+              cnpj: 00.000.000/0001-91
+              legal_name: Partner Store SP LTDA
+              trade_name: Partner Store
+              state_registration: "123456789"
+              tax_regime: SIMPLES_NACIONAL
+              unit_type: matriz
+              email: fiscal@example.com
+              address:
+                zip_code: 01310-100
+                street: Av. Paulista
+                number: "1000"
+                complement: Sala 1
+                neighborhood: Bela Vista
+                city: Sao Paulo
+                state: SP
+      responses:
+        "200":
+          description: Fiscal account provisioned (or updated) and company data registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FiscalAccountResponse"
+              example:
+                store_id: 4821
+                fiscal_account:
+                  status: created
+                  cnpj: 00.000.000/0001-91
+                  legal_name: Partner Store SP LTDA
+                  tax_regime: SIMPLES_NACIONAL
+                  mirrored_fields:
+                    - tax_id
+                    - tax_company_name
+                    - tax_state_registration
+                    - tax_regime
+                    - tax_address
+                    - tax_address_number
+                    - tax_address_neighborhood
+                    - tax_city
+                    - tax_zipcode
+                    - state
+                  skipped_fields: []
+                  mirror_error: null
+        "401":
+          description: Missing or invalid token, or the credential is not bound to a store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnauthorizedError"
+              example:
+                error: Unauthorized
+                message: credential is not bound to a store
+        "422":
+          description: Validation or business error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missingCnpj:
+                  value:
+                    error: Parameter cnpj is required
+                missingAddress:
+                  value:
+                    error: address is required
+                invalidTaxRegime:
+                  value:
+                    error: "tax_regime must be one of: SIMPLES_NACIONAL, LUCRO_REAL, LUCRO_PRESUMIDO."
+                invalidUnitType:
+                  value:
+                    error: "unit_type must be one of: matriz, filial."
+                invalidState:
+                  value:
+                    error: address.state must be a two-letter Brazilian UF code (e.g. SP).
+                identityConflict:
+                  value:
+                    error: >-
+                      tax_regime already set on this store to a different value. Update it with PATCH
+                      /v1/store first, or submit the value already on record.
+                rejectedByProvider:
+                  value:
+                    error: >-
+                      The fiscal registration was rejected. Check the CNPJ, state registration, address, and
+                      tax regime.
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /store/digital-certificate:
+    post:
+      tags:
+        - Stores
+      operationId: uploadStoreDigitalCertificate
+      summary: Upload the store's digital certificate and set NF-e numbering (Brazil)
+      description: |
+        Brazil only. Uploads the store's A1 digital certificate (the `.pfx`/`.p12` file used to
+        sign NF-e) and, in the same call, sets the NF-e series and the next invoice number. The
+        store is derived from the credential used to obtain the token; no store id is accepted.
+        Requires the fiscal account to exist already (`POST /store/fiscal-account`).
+
+        - Every call overwrites the store's NF-e counter. `next_invoice_number` must be the
+          number of the next NF-e the store will actually issue, not the last one used and not
+          `1` for a store that has already issued invoices. Reusing a number makes the tax
+          authority reject the following invoices as duplicates.
+        - `invoice_series` and `next_invoice_number` are accepted as strings or integers and are
+          parsed in base 10, so zero-padded values such as `"089"` are read as 89.
+        - The certificate and its password are never returned or logged.
+        - After upload, the certificate validity is read back on a best-effort basis; if it
+          cannot be read, `status` is `active` and `days_until_expiration`/`expires_at` are null.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DigitalCertificateRequest"
+            example:
+              certificate_base64: <base64-encoded-pfx-file>
+              certificate_password: <certificate-password>
+              invoice_series: 1
+              next_invoice_number: 4567
+      responses:
+        "200":
+          description: Certificate uploaded and numbering configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DigitalCertificateResponse"
+              example:
+                store_id: 4821
+                certificate:
+                  status: active
+                  days_until_expiration: 365
+                  expires_at: "2027-09-03"
+                  uploaded_at: "2026-09-03T14:10:03Z"
+                invoice_numbering:
+                  series: 1
+                  next_number: 4567
+        "401":
+          description: Missing or invalid token, or the credential is not bound to a store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnauthorizedError"
+              example:
+                error: Unauthorized
+                message: credential is not bound to a store
+        "422":
+          description: Validation or business error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missingCertificate:
+                  value:
+                    error: Parameter certificate_base64 is required
+                invalidSeriesFormat:
+                  value:
+                    error: invoice_series must be a positive integer with at most 3 digits
+                invalidNumberFormat:
+                  value:
+                    error: next_invoice_number must be a positive integer with at most 9 digits
+                seriesOutOfRange:
+                  value:
+                    error: invoice_series must be an integer between 1 and 999.
+                numberOutOfRange:
+                  value:
+                    error: next_invoice_number must be an integer between 1 and 999999999.
+                invalidBase64:
+                  value:
+                    error: certificate_base64 is not valid Base64.
+                storeNotConfigured:
+                  value:
+                    error: Store 4821 is not configured to issue fiscal documents.
+                wrongPassword:
+                  value:
+                    error: Incorrect certificate password.
+                invalidFormat:
+                  value:
+                    error: >-
+                      The digital certificate is corrupted or in an invalid format. Export it again as .pfx or
+                      .p12.
+                numberingRejected:
+                  value:
+                    error: >-
+                      The fiscal provider rejected the NF-e series or number. Confirm them with your
+                      accountant.
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /shipping-methods:
+    get:
+      tags:
+        - Shipping methods
+      operationId: listShippingMethods
+      summary: List active shipping methods available to a store
+      description: |
+        Returns every active shipping method offered by the warehouses assigned to the store.
+        Use the `id` values when creating orders or shipping groups that reference a shipping
+        method. Carrier names are the customer-facing names.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: store_id
+          in: query
+          required: true
+          description: Id of the store. Your credential must have access to it.
+          schema:
+            type: integer
+            example: 1234
+      responses:
+        "200":
+          description: Active shipping methods
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ShippingMethod"
+              example:
+                - id: 12
+                  carrier_name: ESTAFETA
+                  shipping_type: national
+                  delivery_type: Ground
+                  country: MX
+                  is_cod: false
+                - id: 15
+                  carrier_name: CUBBO
+                  shipping_type: national
+                  delivery_type: NextDay
+                  country: MX
+                  is_cod: false
+        "401":
+          description: Missing or invalid token, or no access to the store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnauthorizedError"
+              examples:
+                invalidToken:
+                  value:
+                    error: Unauthorized
+                    message: invalid token
+                noStoreAccess:
+                  value:
+                    error: Unauthorized
+                    message: not allowed to show? this Store
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missingStoreId:
+                  value:
+                    error: Parameter store_id is required
+        "500":
+          description: Unexpected error, including an unknown `store_id`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: "unexpected error, timestamp: 1700000000"
+  /shipping-methods/configuration-coverage:
+    get:
+      tags:
+        - Shipping methods
+      operationId: getShippingConfigurationCoverage
+      summary: Check which shipping method a shipping configuration would select for a postcode
+      description: |
+        Simulates routing an order to the given postcode through one of the store's shipping
+        configurations (shipping groups, matched by name, case-insensitive) and returns the
+        shipping method that would be selected. Use it to validate coverage before creating
+        orders. When no shipping method in the configuration covers the destination, the
+        response is still HTTP 200 with `id: null` and a message.
+
+        - `country` accepts an English country name or an ISO 3166-1 two-letter code. Colombia
+          is not supported by this endpoint.
+        - `shipping_scope` must be `international` when the destination country differs from
+          the warehouse country.
+        - `is_cod` in the response names a dedicated cash-on-delivery shipping method; it does
+          not indicate whether cash on delivery can be offered at checkout.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: store_id
+          in: query
+          required: true
+          description: Id of the store. Your credential must have access to it.
+          schema:
+            type: integer
+            example: 1234
+        - name: shipping_configuration_name
+          in: query
+          required: true
+          description: Name of one of the store's shipping configurations (shipping groups); matched case-insensitively
+          schema:
+            type: string
+            example: Economy
+        - name: shipping_scope
+          in: query
+          required: true
+          description: Scope of the shipment to simulate
+          schema:
+            type: string
+            enum:
+              - national
+              - international
+              - pickup
+            example: national
+        - name: postcode
+          in: query
+          required: true
+          description: Destination postcode
+          schema:
+            type: string
+            example: "06600"
+        - name: country
+          in: query
+          required: true
+          description: Destination country, as an English name or ISO 3166-1 alpha-2 code
+          schema:
+            type: string
+            example: MX
+        - name: for_cod
+          in: query
+          required: false
+          description: Simulate a cash-on-delivery order
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: "The selected shipping method, or `id: null` with a message when none covers the destination"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShippingCoverage"
+              examples:
+                covered:
+                  value:
+                    id: 12
+                    carrier_name: ESTAFETA
+                    shipping_type: national
+                    delivery_type: Ground
+                    country: MX
+                    is_cod: false
+                notCovered:
+                  value:
+                    id: null
+                    message: no compatible shipping method found.
+        "401":
+          description: Missing or invalid token, or no access to the store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnauthorizedError"
+              examples:
+                invalidToken:
+                  value:
+                    error: Unauthorized
+                    message: invalid token
+                noStoreAccess:
+                  value:
+                    error: Unauthorized
+                    message: not allowed to show? this Store
+        "422":
+          description: Validation or business error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missingParam:
+                  value:
+                    error: Parameter shipping_configuration_name is required
+                invalidScope:
+                  value:
+                    error: Parameter shipping_scope must be within ["international", "national", "pickup"]
+                storeNotFound:
+                  value:
+                    error: store_id 1234 not found
+                unknownCountry:
+                  value:
+                    error: Unrecognized country 'Narnia'. Try in english or using ISO 3166-1 two-letter code.
+                colombiaUnsupported:
+                  value:
+                    error: This service is unavailable for country CO.
+                configurationNotFound:
+                  value:
+                    error: shipping configuration not found with name 'Economy'
+                scopeMismatch:
+                  value:
+                    error: shipping_scope 'national' selected for intenational order.
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /shipping-methods/quote:
+    get:
+      tags:
+        - Shipping methods
+      operationId: getShippingQuote
+      summary: Quote shipping options for a destination and package
+      description: |
+        Returns the shipping options (carrier, delivery type, estimated delivery and price) that
+        the store's shipping configuration would offer for a package going to the given zip code.
+        Use it to show shipping choices at checkout. Mexico and Brazil destinations only.
+
+        To create an order with a specific shipping method, send the `shipping_method_id` of the option
+        you choose as `shipping_method_id` in `POST /orders`, `POST /orders/create-and-ship` or
+        `POST /brazil/orders`.
+
+        - The shipping configuration is chosen from the store's product shipping rules when
+          `sku` matches one; otherwise the default configuration of the store's Open API
+          integration is used. If none can be resolved the request fails.
+        - The quoted weight is the greater of the declared weight and the volumetric weight
+          computed from the dimensions.
+        - When click and collect is enabled for the store's integration, pickup-point options
+          are appended to the same array with `is_click_and_collect: true`. `order_total` or
+          `item_count` are used to price those options, depending on how the store prices
+          click and collect (see `cnc_pricing_basis`). If pickup-point pricing fails, the
+          regular options are still returned.
+        - `delivery_eta_range` is omitted when no estimate is available.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: store_id
+          in: query
+          required: true
+          description: Id of the store. Your credential must have access to it.
+          schema:
+            type: integer
+            example: 1234
+        - name: zip_code
+          in: query
+          required: true
+          description: Destination zip code
+          schema:
+            type: string
+            example: "06600"
+        - name: country
+          in: query
+          required: false
+          description: Destination country code. Only `MX` and `BR` are supported.
+          schema:
+            type: string
+            enum:
+              - MX
+              - BR
+            default: MX
+        - name: sku
+          in: query
+          required: false
+          description: SKU used to match the store's product shipping rules, when configured
+          schema:
+            type: string
+            example: SKU-RED-M
+        - name: shipping_type
+          in: query
+          required: false
+          description: Shipment scope
+          schema:
+            type: string
+            enum:
+              - national
+              - international
+            default: national
+        - name: width_cm
+          in: query
+          required: true
+          description: Package width in centimeters
+          schema:
+            type: number
+            minimum: 0.1
+            example: 20
+        - name: height_cm
+          in: query
+          required: true
+          description: Package height in centimeters
+          schema:
+            type: number
+            minimum: 0.1
+            example: 10
+        - name: length_cm
+          in: query
+          required: true
+          description: Package length in centimeters
+          schema:
+            type: number
+            minimum: 0.1
+            example: 30
+        - name: weight_kg
+          in: query
+          required: true
+          description: Declared package weight in kilograms
+          schema:
+            type: number
+            example: 1.5
+        - name: order_total
+          in: query
+          required: false
+          description: Cart value, used to price click-and-collect options when the store prices them by cart value
+          schema:
+            type: number
+            example: 1500
+        - name: item_count
+          in: query
+          required: false
+          description: >-
+            Number of units in the cart, used to price click-and-collect options when the store prices them by
+            item count. Digits only.
+          schema:
+            type: string
+            pattern: ^\d+$
+            example: "3"
+      responses:
+        "200":
+          description: Shipping options. Regular options come first, click-and-collect options (if any) after them.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ShippingQuote"
+              example:
+                - shipping_method_id: 12
+                  carrier_name: ESTAFETA
+                  carrier_delivery: Ground
+                  quoted_weight_kg: 2
+                  delivery_sla_in_hours: 72
+                  delivery_eta_range:
+                    range_begin: "2026-10-14T06:00:00.000Z"
+                    range_end: "2026-10-16T05:59:59.999Z"
+                  price: 149
+                - shipping_method_id: 15
+                  carrier_name: CUBBO
+                  carrier_delivery: NextDay
+                  quoted_weight_kg: 2
+                  delivery_sla_in_hours: null
+                  delivery_eta_range: null
+                  price: 125
+                  is_click_and_collect: true
+                  service_code: CUBBOCNCCUBBOCUBBO001
+                  location_name: Punto Cubbo Centro
+                  distance_km: 0.8
+                  pickup_address: Calle Centro 300, CDMX, 06000
+                  cnc_pricing_basis: cart_value
+        "401":
+          description: Missing or invalid token, or no access to the store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnauthorizedError"
+              examples:
+                invalidToken:
+                  value:
+                    error: Unauthorized
+                    message: invalid token
+                noStoreAccess:
+                  value:
+                    error: Unauthorized
+                    message: not allowed to show? this Store
+        "422":
+          description: Validation or business error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missingParam:
+                  value:
+                    error: Parameter width_cm is required
+                dimensionTooSmall:
+                  value:
+                    error: Parameter width_cm cannot be less than 0.1
+                invalidItemCount:
+                  value:
+                    error: Parameter item_count must match format ^\d+$
+                storeNotFound:
+                  value:
+                    error: store_id 1234 not found
+                countryUnsupported:
+                  value:
+                    error: destination country CO not found
+                zipNotFound:
+                  value:
+                    error: destination not found for zip code 00000
+                noConfiguration:
+                  value:
+                    error: No shipping configuration found
+                noCoverage:
+                  value:
+                    error: No shipping costs found due to lack of coverage.
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /shipping-labels/{shipping_label_id}:
+    get:
+      tags:
+        - Shipping labels
+      operationId: getShippingLabel
+      summary: Get a shipping label
+      description: |
+        Returns one shipping label of an order your credential can access, including the label
+        file, the carrier tracking number and the tracking URLs. Return labels that travel inside
+        the box for the recipient's later use are not shipping labels of the order and are not
+        served by this endpoint (the response is the same as for an unknown id).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: shipping_label_id
+          in: path
+          required: true
+          description: Id of the shipping label, as returned in the order's `shipping_labels`
+          schema:
+            type: integer
+            example: 98765
+      responses:
+        "200":
+          description: The shipping label
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShippingLabel"
+              example:
+                id: 98765
+                order_id: 55501
+                billing_file: null
+                shipping_number: TRACK0000001
+                label_file:
+                  path: /rails/active_storage/blobs/redirect/<blob-key>/label.pdf
+                  url: https://api.cubbo.com/rails/active_storage/blobs/redirect/<blob-key>/label.pdf
+                  filename: label.pdf
+                  byte_size: 48213
+                  content_type: application/pdf
+                label_type: Shipping
+                tracking_url: https://carrier.example.com/track/TRACK0000001
+                cubbo_tracking_url: https://tracking.example.com/orders/<encoded-order-id>
+        "401":
+          description: Missing or invalid token, or no access to the label's order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnauthorizedError"
+              examples:
+                invalidToken:
+                  value:
+                    error: Unauthorized
+                    message: invalid token
+                noOrderAccess:
+                  value:
+                    error: Unauthorized
+                    message: not allowed to show? this Order
+        "422":
+          description: Validation or business error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidId:
+                  value:
+                    error: "'abc' is not a valid Integer"
+                notFound:
+                  value:
+                    error: no shipping_label with id 98765 was found.
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /orders/{order_id}/pickup-points:
+    get:
+      tags:
+        - Click and collect
+      operationId: listOrderPickupPoints
+      summary: List click-and-collect pickup points eligible for an order
+      description: |
+        Returns the pickup points (carrier branches and Cubbo points) near a postal code to which
+        the order could be converted with
+        `PATCH /orders/{order_id}/convert-to-click-and-collect`. Only points whose conversion
+        would be accepted are listed: the order must be in a pre-label status (paused orders are
+        allowed), click and collect must be enabled for the store, and each point's pickup
+        carrier must be allowed for the store and not cost more than the order's original
+        shipping (unless the store waived that check).
+
+        - `store_id` is the store that owns the order and must be a store of your account; an
+          order that does not belong to it answers 404.
+        - `postal_code` defaults to the order's shipping zip code. `address` refines the search
+          for carriers that need a street address.
+        - An ineligible order still answers 200, with `cnc_eligible: false`, a `code` explaining
+          why and an empty list.
+        - Unknown orders, orders of other accounts and orders your credential cannot read all
+          answer the same 404 body.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          description: Id of the order
+          schema:
+            type: integer
+            example: 55501
+        - name: store_id
+          in: query
+          required: true
+          description: Id of the store that owns the order; must belong to your account
+          schema:
+            type: integer
+            example: 1234
+        - name: postal_code
+          in: query
+          required: false
+          description: Postal code to search around. Defaults to the order's shipping zip code.
+          schema:
+            type: string
+            example: "06600"
+        - name: address
+          in: query
+          required: false
+          description: Street address to refine the search
+          schema:
+            type: string
+            example: Av. Reforma 123
+      responses:
+        "200":
+          description: Eligible pickup points, or the reason the order is not eligible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PickupPointsResponse"
+              examples:
+                eligible:
+                  value:
+                    cnc_eligible: true
+                    pickup_points:
+                      - carrier: ESTAFETA
+                        service_code: CUBBOCNCESTEST001
+                        name: Sucursal Centro
+                        address: Av. Reforma 123, CDMX
+                        distance_km: 1.2
+                        schedule: "Lun a Vie: 10:00-18:00, Sab: 10:00-14:00, Dom: cerrado"
+                      - carrier: CUBBO
+                        service_code: CUBBOCNCCUBBOCUBBO001
+                        name: Punto Cubbo Centro
+                        address: Calle Centro 300, CDMX, 06000
+                        distance_km: 0.8
+                        schedule: "Lunes a Sabado: 10:00-20:00"
+                notEligible:
+                  value:
+                    cnc_eligible: false
+                    code: CNC_NOT_ENABLED_FOR_STORE
+                    pickup_points: []
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: The order or the claimed store does not exist or is not accessible to your credential
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClickAndCollectError"
+              examples:
+                orderNotFound:
+                  value:
+                    error: Order not found
+                    code: ORDER_NOT_FOUND
+                storeNotFound:
+                  value:
+                    error: store_not_found
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missingStoreId:
+                  value:
+                    error: Parameter store_id is required
+        "500":
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClickAndCollectUnexpectedError"
+              example:
+                error: unexpected_error
+                timestamp: 1700000000
+  /orders/{order_id}/convert-to-click-and-collect:
+    patch:
+      tags:
+        - Click and collect
+      operationId: convertOrderToClickAndCollect
+      summary: Convert an order to click and collect
+      description: |
+        Changes an order's delivery to pickup at the point identified by `service_code` (obtained
+        from `GET /orders/{order_id}/pickup-points`) and reprocesses it with the pickup carrier.
+        On success the full updated order is returned.
+
+        - The order must be in a pre-label status (paused orders are allowed) and must not be
+          click and collect already.
+        - Click and collect must be enabled for the store, and the point's carrier must be one
+          the store allows. The store's order-editing restrictions apply.
+        - The pickup option must not cost more than the order's original shipping unless the
+          store waived that check. Orders shipped by carriers not billed through Cubbo, or
+          international orders, cannot be converted.
+        - Business rejections answer 422 with a stable `code`. On `ALREADY_CLICK_AND_COLLECT`
+          the body also carries the order's current `click_and_collect_metadata` (public fields
+          only) so a client retrying after a timeout can tell whether its own conversion won.
+        - If the conversion succeeds but the order cannot be rendered, the response is still
+          200 with `{"converted": true}`; fetch the order to see its new state.
+        - Unknown orders, orders of other accounts and orders your credential cannot update all
+          answer the same 404 body.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          description: Id of the order
+          schema:
+            type: integer
+            example: 55501
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConvertToClickAndCollectRequest"
+            example:
+              store_id: 1234
+              service_code: CUBBOCNCESTEST001
+      responses:
+        "200":
+          description: >-
+            Order converted. The body is the updated order (with `order_lines` and `shipping_method`), or
+            `{"converted": true}` if the order could not be rendered.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Order"
+                  - $ref: "#/components/schemas/ConvertedWithoutOrder"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: The order or the claimed store does not exist or is not accessible to your credential
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClickAndCollectError"
+              examples:
+                orderNotFound:
+                  value:
+                    error: Order not found
+                    code: ORDER_NOT_FOUND
+                storeNotFound:
+                  value:
+                    error: store_not_found
+        "422":
+          description: Validation error (`error` only) or business rejection (`error` plus a stable `code`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClickAndCollectConversionError"
+              examples:
+                missingServiceCode:
+                  value:
+                    error: Parameter service_code is required
+                invalidStatus:
+                  value:
+                    error: Order cannot be converted to click and collect in status shipped
+                    code: INVALID_ORDER_STATUS
+                alreadyClickAndCollect:
+                  value:
+                    error: Order is already click and collect
+                    code: ALREADY_CLICK_AND_COLLECT
+                    click_and_collect_metadata:
+                      carrier_name: Estafeta
+                      service_code: CUBBOCNCESTEST001
+                storeEditRestricted:
+                  value:
+                    error: Order editing is currently restricted for this store
+                    code: STORE_EDIT_RESTRICTED
+                invalidServiceCode:
+                  value:
+                    error: Invalid click_and_collect_service_code
+                    code: INVALID_CNC_SERVICE_CODE
+                carrierTemporarilyUnavailable:
+                  value:
+                    error: This pickup carrier is temporarily unavailable
+                    code: CNC_CARRIER_TEMPORARILY_UNAVAILABLE
+                notEnabledForStore:
+                  value:
+                    error: Click and collect is not enabled for this store
+                    code: CNC_NOT_ENABLED_FOR_STORE
+                carrierNotEnabledForStore:
+                  value:
+                    error: This pickup carrier is not enabled for this store
+                    code: CNC_CARRIER_NOT_ENABLED_FOR_STORE
+                shippingMethodNotFound:
+                  value:
+                    error: No shipping method found for click and collect with carrier ESTAFETA
+                    code: CNC_SHIPPING_METHOD_NOT_FOUND
+                originalNotCubboBilled:
+                  value:
+                    error: This order's shipping carrier doesn't support click and collect conversion
+                    code: CNC_ORIGINAL_NOT_CUBBO_BILLED
+                originalNotNational:
+                  value:
+                    error: Click and collect is only available for national orders
+                    code: CNC_ORIGINAL_NOT_NATIONAL_SHIPPING
+                priceExceedsOriginal:
+                  value:
+                    error: This pickup option would cost more than the original shipping
+                    code: CNC_PRICE_EXCEEDS_ORIGINAL
+                rateCardUnavailable:
+                  value:
+                    error: Click and collect pricing could not be determined for this order
+                    code: CNC_RATE_CARD_UNAVAILABLE
+                locationConfirmationFailed:
+                  value:
+                    error: The pickup point could not be confirmed with the carrier
+                    code: CNC_LOCATION_CONFIRMATION_FAILED
+                genericIneligible:
+                  value:
+                    error: Click and collect conversion is not eligible
+                    code: CNC_SHIPPING_METHOD_NOT_FOUND
+        "500":
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClickAndCollectUnexpectedError"
+              example:
+                error: unexpected_error
+                timestamp: 1700000000
+  /carrier-services/pickup-locations:
+    get:
+      tags:
+        - Click and collect
+      operationId: listPickupLocations
+      summary: List pickup locations near a postal code (public)
+      description: |
+        Public, unauthenticated listing of pickup locations (carrier branches and Cubbo points)
+        near a postal code, used by the buyer tracking page to offer pickup. Each location comes
+        as a "rate" with a Spanish display name ready to show to the buyer and a `service_code`
+        that identifies the point.
+
+        - Without `order_id` the response contains only `rates`, for Mexico.
+        - With `order_id` (the encoded order identifier found in the order's Cubbo tracking
+          link) the list is filtered to the points the order could actually be converted to,
+          and `cnc_eligible` reports the outcome. When the order is not eligible, the unfiltered
+          list is still returned together with `cnc_eligible: false` and a `code`; when
+          `order_id` cannot be resolved the code is `CNC_INVALID_ORDER_ID`. The order's
+          destination country drives the carrier search.
+        - `address` enables the carriers that need a street address; without it those carriers
+          are skipped.
+        - A postal code that cannot be used answers 200 with an empty `rates` array. If any
+          carrier lookup fails, the other carriers' locations are still returned.
+        - Omitting `postal_code` is not handled gracefully and results in HTTP 500.
+      parameters:
+        - name: postal_code
+          in: query
+          required: true
+          description: >-
+            Postal code to search around. When `order_id` is given and the order's zip code is known, that zip
+            code is used instead.
+          schema:
+            type: string
+            example: "06600"
+        - name: address
+          in: query
+          required: false
+          description: Street address, used by carriers that search by address
+          schema:
+            type: string
+            example: Av. Insurgentes 100
+        - name: order_id
+          in: query
+          required: false
+          description: >-
+            Encoded order identifier from the order's Cubbo tracking link. Enables eligibility filtering for
+            that order.
+          schema:
+            type: string
+            example: <encoded-order-id>
+      responses:
+        "200":
+          description: Pickup locations, optionally with the order's click-and-collect eligibility
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PickupLocationsResponse"
+              examples:
+                withoutOrder:
+                  value:
+                    rates:
+                      - service_name: >-
+                          Recolecta en punto físico a 1.5km - Estafeta Insurgentes - Lun a Vie: 10:00-18:00,
+                          Sáb: 10:00-14:00, Dom: cerrado
+                        service_code: CUBBOCNCESTEST001
+                        source: Av. Insurgentes 100, CDMX
+                        description: Av. Insurgentes 100, CDMX
+                      - service_name: Recolecta en punto físico a 0.8km - Punto Cubbo Centro
+                        service_code: CUBBOCNCCUBBOCUBBO001
+                        source: Calle Centro 300, CDMX, 06000
+                        description: Calle Centro 300, CDMX, 06000
+                eligibleOrder:
+                  value:
+                    rates:
+                      - service_name: Recolecta en punto físico a 0.8km - Punto Cubbo Centro
+                        service_code: CUBBOCNCCUBBOCUBBO001
+                        source: Calle Centro 300, CDMX, 06000
+                        description: Calle Centro 300, CDMX, 06000
+                    cnc_eligible: true
+                ineligibleOrder:
+                  value:
+                    rates: []
+                    cnc_eligible: false
+                    code: CNC_INVALID_ORDER_STATUS
+                invalidOrderId:
+                  value:
+                    rates: []
+                    cnc_eligible: false
+                    code: CNC_INVALID_ORDER_ID
+        "500":
+          description: Unexpected error, including a missing `postal_code`
+      security: []
+components:
+  schemas:
+    UnauthorizedError:
+      type: object
+      description: Body of every 401 response
+      properties:
+        error:
+          type: string
+          description: Always `Unauthorized`
+          example: Unauthorized
+        message:
+          type: string
+          description: Why the request was refused
+          example: invalid token
+      required:
+        - error
+        - message
+    AuthTokenRequest:
+      type: object
+      required:
+        - client_id
+        - client_secret
+      properties:
+        client_id:
+          type: string
+          description: Identifier of your API credential
+          example: 0f1e2d3c-0000-4000-8000-000000001234
+        client_secret:
+          type: string
+          description: Secret of your API credential
+          example: <your-client-secret>
+        expires_in:
+          type: integer
+          description: Token lifetime in seconds
+          minimum: 10
+          maximum: 86400
+          default: 86400
+          example: 86400
+        grant_type:
+          type: string
+          description: OAuth grant type; only `client_credentials` is supported
+          enum:
+            - client_credentials
+          default: client_credentials
+          example: client_credentials
+    AuthTokenResponse:
+      type: object
+      required:
+        - token
+        - expires_in
+        - type
+      properties:
+        token:
+          type: string
+          description: Bearer token to send in the `Authorization` header
+          example: <jwt-access-token>
+        expires_in:
+          type: integer
+          description: Lifetime of the token in seconds, as requested
+          example: 86400
+        type:
+          type: string
+          description: Token type; always `Bearer`
+          example: Bearer
+    Store:
+      type: object
+      description: A store's identity and fiscal fields, as returned by the store-scoped endpoints
+      properties:
+        id:
+          type: integer
+          description: Store id
+          example: 4821
+        name:
+          type: string
+          description: Store name
+          example: Partner Store SP
+        description:
+          type:
+            - string
+            - "null"
+          description: Free-text description
+          example: Store provisioned via API
+        created_at:
+          type: string
+          format: date-time
+          description: Creation time
+          example: "2026-09-03T14:02:11.000Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update time
+          example: "2026-09-03T14:05:47.000Z"
+        tax_id:
+          type:
+            - string
+            - "null"
+          description: Store tax id (CNPJ in Brazil, digits only; RFC in Mexico)
+          example: "00000000000191"
+        invoice_customization:
+          type:
+            - object
+            - "null"
+          description: Advanced NF-e customization keyed by invoice purpose (Brazil)
+          additionalProperties:
+            type: object
+          example: {}
+        state:
+          type:
+            - string
+            - "null"
+          description: State of the store's fiscal address (two-letter UF code in Brazil)
+          example: SP
+        tax_regime:
+          type:
+            - string
+            - "null"
+          description: Brazilian tax regime
+          enum:
+            - SIMPLES_NACIONAL
+            - LUCRO_REAL
+            - LUCRO_PRESUMIDO
+            - null
+          example: SIMPLES_NACIONAL
+        tax_company_name:
+          type:
+            - string
+            - "null"
+          description: Legal company name
+          example: Partner Store SP LTDA
+        tax_address:
+          type:
+            - string
+            - "null"
+          description: Fiscal address street
+          example: Av. Paulista
+        tax_address_number:
+          type:
+            - string
+            - "null"
+          description: Fiscal address number
+          example: "1000"
+        tax_address_neighborhood:
+          type:
+            - string
+            - "null"
+          description: Fiscal address neighborhood
+          example: Bela Vista
+        tax_city:
+          type:
+            - string
+            - "null"
+          description: Fiscal address city
+          example: Sao Paulo
+        tax_zipcode:
+          type:
+            - string
+            - "null"
+          description: Fiscal address postal code
+          example: 01310-100
+        tax_state_phone:
+          type:
+            - string
+            - "null"
+          description: Phone registered with the state registration
+          example: +55 11 0000-0000
+        tax_state_registration:
+          type:
+            - string
+            - "null"
+          description: State registration number (Inscricao Estadual)
+          example: "123456789"
+        store_type:
+          type: string
+          description: Service model of the store
+          enum:
+            - ALL_SERVICES
+            - PICK_AND_SHIP
+            - DEMO_ALL_SERVICES
+          example: ALL_SERVICES
+    StoreCreated:
+      description: |
+        Response of `POST /stores`: the full store record (the fields of `Store` plus the
+        store's configuration flags, its `account` and its `warehouses`) and, only when an Open
+        API integration was created, the `open_api_integration` credentials.
+      allOf:
+        - $ref: "#/components/schemas/Store"
+        - type: object
+          properties:
+            b2b:
+              type: boolean
+              description: Whether the store operates business-to-business
+              example: false
+            d2c:
+              type: boolean
+              description: Whether the store operates direct-to-consumer
+              example: true
+            skip_product_lot_in_returns:
+              type:
+                - boolean
+                - "null"
+              description: Store configuration flag
+              example: null
+            receive_only_complete_returns:
+              type:
+                - boolean
+                - "null"
+              description: Store configuration flag
+              example: null
+            return_inspection_enabled:
+              type:
+                - boolean
+                - "null"
+              description: Store configuration flag
+              example: null
+            requires_stock_only_from_confirmed_replenishments:
+              type: boolean
+              description: Store configuration flag
+              example: false
+            has_store_branches:
+              type: boolean
+              description: Store configuration flag
+              example: false
+            is_oxxo_store:
+              type: boolean
+              description: Store configuration flag
+              example: false
+            enable_replenishment_invoices:
+              type:
+                - boolean
+                - "null"
+              description: Store configuration flag
+              example: null
+            enable_removal_order_invoices:
+              type:
+                - boolean
+                - "null"
+              description: Store configuration flag
+              example: null
+            enable_manual_client_invoice:
+              type: boolean
+              description: Store configuration flag
+              example: false
+            enable_b2b_cnpj_client_invoice:
+              type: boolean
+              description: Store configuration flag
+              example: false
+            account:
+              type: object
+              description: The account the store belongs to (id, name, account type, and the account's stores)
+              additionalProperties: true
+              example:
+                id: 900
+                name: Partner Ltd
+                account_type: COMPANY
+            warehouses:
+              type: array
+              description: Warehouses assigned to the new store
+              items:
+                type: object
+                additionalProperties: true
+              example:
+                - id: 232
+                  name: CD Sao Paulo
+                  unique_code: SP1
+            open_api_integration:
+              $ref: "#/components/schemas/OpenApiIntegrationCredentials"
+    OpenApiIntegrationCredentials:
+      type: object
+      description: >-
+        Credentials of the new store's Open API integration. Present only when `source_shipping_group_ids` was
+        sent. Secrets are shown once.
+      required:
+        - client_id
+        - client_secret
+        - webhook_consumer_url
+        - webhook_feeds
+        - webhook_consumer_secret
+        - webhook_consumer_secret_reason
+      properties:
+        client_id:
+          type: string
+          description: Credential id to use with `POST /auth/token` to act as the new store
+          example: b6e3a1f0-1234-4c9a-9a11-000000000001
+        client_secret:
+          type: string
+          description: Credential secret, returned only in this response. Grants access to every store of the account.
+          example: <client-secret-shown-once>
+        webhook_consumer_url:
+          type:
+            - string
+            - "null"
+          description: URL that will receive the store's webhooks, or null when none was sent
+          example: https://example.com/cubbo/webhooks
+        webhook_feeds:
+          type: array
+          description: Feeds that will be delivered to `webhook_consumer_url`; empty when no URL was sent
+          items:
+            type: string
+            enum:
+              - order_status
+              - inventory_movement
+              - replenishment_status
+          example:
+            - order_status
+            - inventory_movement
+            - replenishment_status
+        webhook_consumer_secret:
+          type:
+            - string
+            - "null"
+          description: >-
+            Secret used to sign the webhooks, returned only in this response. Null whenever
+            `webhook_consumer_secret_reason` is set.
+          example: <webhook-secret-shown-once>
+        webhook_consumer_secret_reason:
+          type:
+            - string
+            - "null"
+          description: |
+            Why no secret was returned. `no_webhook_url`: no `webhook_consumer_url` was sent.
+            `reused_from_source_store`: the new store signs with the same secret the source store
+            already uses for this URL. `managed_by_warehouse`: webhook signing for this store is
+            managed by Cubbo; contact your Cubbo representative. Null when a secret is returned.
+          enum:
+            - no_webhook_url
+            - reused_from_source_store
+            - managed_by_warehouse
+            - null
+          example: null
+    StoreCreateRequest:
+      type: object
+      required:
+        - name
+        - source_store_id
+        - created_by_email
+      properties:
+        name:
+          type: string
+          description: Name of the new store
+          example: Partner Store SP
+        source_store_id:
+          type: integer
+          description: >-
+            Id of an existing store used as template. The new store is created in the same account. Your
+            credential must have access to it.
+          example: 1234
+        created_by_email:
+          type: string
+          format: email
+          description: >-
+            Email of an existing user of the source store's account, recorded as the creator. The user is not
+            created by this call.
+          example: integrations@example.com
+        store_type:
+          type: string
+          description: Service model of the new store. Defaults to the source store's type.
+          enum:
+            - ALL_SERVICES
+            - PICK_AND_SHIP
+            - DEMO_ALL_SERVICES
+          example: ALL_SERVICES
+        warehouse_id:
+          type: integer
+          description: >-
+            Warehouse for the new store. Must already be assigned to the source store. Defaults to the source
+            store's first warehouse.
+          example: 232
+        description:
+          type:
+            - string
+            - "null"
+          description: Free-text description
+          default: null
+          example: Store provisioned via API
+        source_shipping_group_ids:
+          type: array
+          description: >-
+            Ids of the source store's shipping groups to copy. Replaces the country defaults and creates the
+            new store's Open API integration.
+          items:
+            type: integer
+          example:
+            - 101
+            - 102
+        default_shipping_group_id:
+          type: integer
+          description: >-
+            Which of `source_shipping_group_ids` becomes the default group. Required with
+            `source_shipping_group_ids`; must not be an international-only group.
+          example: 101
+        webhook_consumer_url:
+          type: string
+          format: uri
+          description: >-
+            HTTPS URL that will receive the new store's webhooks. Only with `source_shipping_group_ids`. Must
+            use https and a domain name (no raw IP).
+          example: https://example.com/cubbo/webhooks
+        webhook_feeds:
+          type: array
+          description: >-
+            Feeds to deliver to `webhook_consumer_url`. Requires `webhook_consumer_url`. Omitted means all
+            three.
+          items:
+            type: string
+            enum:
+              - order_status
+              - inventory_movement
+              - replenishment_status
+          example:
+            - order_status
+    StoreUpdateRequest:
+      type: object
+      description: Send only the fields to change. At least one must be present.
+      properties:
+        name:
+          type: string
+          description: Store name
+          example: Partner Store SP
+        description:
+          type: string
+          description: Free-text description
+          example: Store provisioned via API
+        tax_id:
+          type: string
+          description: Store tax id (CNPJ in Brazil)
+          example: "00000000000191"
+        state:
+          type: string
+          description: >-
+            State of the fiscal address. For stores in Brazil it must be a two-letter UF code;
+            case-insensitive.
+          example: SP
+        tax_regime:
+          type: string
+          description: Brazilian tax regime; case-insensitive
+          enum:
+            - SIMPLES_NACIONAL
+            - LUCRO_REAL
+            - LUCRO_PRESUMIDO
+          example: SIMPLES_NACIONAL
+        tax_company_name:
+          type: string
+          description: Legal company name
+          example: Partner Store SP LTDA
+        tax_address:
+          type: string
+          description: Fiscal address street
+          example: Av. Paulista
+        tax_address_number:
+          type: string
+          description: Fiscal address number
+          example: "1000"
+        tax_address_neighborhood:
+          type: string
+          description: Fiscal address neighborhood
+          example: Bela Vista
+        tax_city:
+          type: string
+          description: Fiscal address city
+          example: Sao Paulo
+        tax_zipcode:
+          type: string
+          description: Fiscal address postal code
+          example: 01310-100
+        tax_state_registration:
+          type: string
+          description: State registration number (Inscricao Estadual)
+          example: "123456789"
+        tax_state_phone:
+          type: string
+          description: Phone registered with the state registration
+          example: +55 11 0000-0000
+        invoice_customization:
+          type: object
+          description: >-
+            Advanced NF-e customization keyed by invoice purpose. Replaces the current value. Ask your Cubbo
+            representative before using it.
+          propertyNames:
+            enum:
+              - REPLENISHMENT_INVOICE
+              - REPLENISHMENT_ADJUSTMENT_INVOICE
+              - SYMBOLIC_RETURN_INVOICE
+              - SALE_INVOICE
+              - DONATION_INVOICE
+              - REMOVE_STOCK_INVOICE
+              - RETURN_INVOICE
+              - DONATION_RETURN_INVOICE
+              - SHIPPING
+              - SHIPPING_RETURN
+          additionalProperties:
+            type: object
+          example:
+            SALE_INVOICE:
+              operation_nature: Venda
+    FiscalAddress:
+      type: object
+      description: Fiscal address of the company
+      properties:
+        zip_code:
+          type: string
+          description: Postal code (CEP)
+          example: 01310-100
+        street:
+          type: string
+          description: Street
+          example: Av. Paulista
+        number:
+          type: string
+          description: Number
+          example: "1000"
+        complement:
+          type: string
+          description: Address complement
+          example: Sala 1
+        neighborhood:
+          type: string
+          description: Neighborhood
+          example: Bela Vista
+        city:
+          type: string
+          description: City
+          example: Sao Paulo
+        state:
+          type: string
+          description: Two-letter Brazilian UF code; case-insensitive
+          example: SP
+    FiscalAccountRequest:
+      type: object
+      required:
+        - cnpj
+        - legal_name
+        - tax_regime
+        - address
+      properties:
+        cnpj:
+          type: string
+          description: Company CNPJ, with or without punctuation. Stored on the store as digits only.
+          example: 00.000.000/0001-91
+        legal_name:
+          type: string
+          description: Legal company name (razao social)
+          example: Partner Store SP LTDA
+        trade_name:
+          type: string
+          description: Trade name (nome fantasia)
+          example: Partner Store
+        state_registration:
+          type: string
+          description: State registration number (Inscricao Estadual)
+          example: "123456789"
+        tax_regime:
+          type: string
+          description: Brazilian tax regime; case-insensitive
+          enum:
+            - SIMPLES_NACIONAL
+            - LUCRO_REAL
+            - LUCRO_PRESUMIDO
+          example: SIMPLES_NACIONAL
+        unit_type:
+          type: string
+          description: Whether this CNPJ is the head office (`matriz`) or a branch (`filial`)
+          enum:
+            - matriz
+            - filial
+          default: matriz
+          example: matriz
+        email:
+          type: string
+          format: email
+          description: Contact email for the fiscal account
+          example: fiscal@example.com
+        address:
+          $ref: "#/components/schemas/FiscalAddress"
+    FiscalAccountResponse:
+      type: object
+      required:
+        - store_id
+        - fiscal_account
+      properties:
+        store_id:
+          type: integer
+          description: Id of the store the account belongs to
+          example: 4821
+        fiscal_account:
+          type: object
+          required:
+            - status
+            - cnpj
+            - legal_name
+            - tax_regime
+            - mirrored_fields
+            - skipped_fields
+            - mirror_error
+          properties:
+            status:
+              type: string
+              description: "`created` on the first call, `updated` when the account already existed"
+              enum:
+                - created
+                - updated
+              example: created
+            cnpj:
+              type: string
+              description: CNPJ as submitted
+              example: 00.000.000/0001-91
+            legal_name:
+              type: string
+              description: Legal company name as submitted
+              example: Partner Store SP LTDA
+            tax_regime:
+              type: string
+              description: Tax regime, normalized to upper case
+              enum:
+                - SIMPLES_NACIONAL
+                - LUCRO_REAL
+                - LUCRO_PRESUMIDO
+              example: SIMPLES_NACIONAL
+            mirrored_fields:
+              type: array
+              description: Store fields filled from this request (they were blank before)
+              items:
+                type: string
+              example:
+                - tax_id
+                - tax_company_name
+                - tax_regime
+                - tax_address
+                - state
+            skipped_fields:
+              type: array
+              description: Store fields that already had a value and were left unchanged
+              items:
+                type: string
+              example: []
+            mirror_error:
+              type:
+                - string
+                - "null"
+              description: >-
+                Null normally. Set when the account was provisioned but the data could not be copied onto the
+                store; contact Cubbo support.
+              example: null
+    DigitalCertificateRequest:
+      type: object
+      required:
+        - certificate_base64
+        - certificate_password
+        - invoice_series
+        - next_invoice_number
+      properties:
+        certificate_base64:
+          type: string
+          format: byte
+          description: The A1 certificate file (`.pfx`/`.p12`) encoded in Base64
+          example: <base64-encoded-pfx-file>
+        certificate_password:
+          type: string
+          description: Export password of the certificate
+          example: <certificate-password>
+        invoice_series:
+          type:
+            - integer
+            - string
+          description: NF-e series, 1 to 999. Digits only; parsed in base 10.
+          example: 1
+        next_invoice_number:
+          type:
+            - integer
+            - string
+          description: Number of the next NF-e the store will issue, 1 to 999999999. Digits only; parsed in base 10.
+          example: 4567
+    DigitalCertificateResponse:
+      type: object
+      required:
+        - store_id
+        - certificate
+        - invoice_numbering
+      properties:
+        store_id:
+          type: integer
+          description: Id of the store
+          example: 4821
+        certificate:
+          type: object
+          required:
+            - status
+            - days_until_expiration
+            - expires_at
+            - uploaded_at
+          properties:
+            status:
+              type: string
+              description: "`active`, or `expired` when the uploaded certificate is already past its validity"
+              enum:
+                - active
+                - expired
+              example: active
+            days_until_expiration:
+              type:
+                - integer
+                - "null"
+              description: Days until the certificate expires; null if the validity could not be read back
+              example: 365
+            expires_at:
+              type:
+                - string
+                - "null"
+              format: date
+              description: Expiration date; null if the validity could not be read back
+              example: "2027-09-03"
+            uploaded_at:
+              type: string
+              format: date-time
+              description: When the certificate was uploaded
+              example: "2026-09-03T14:10:03Z"
+        invoice_numbering:
+          type: object
+          required:
+            - series
+            - next_number
+          properties:
+            series:
+              type: integer
+              description: NF-e series configured
+              example: 1
+            next_number:
+              type: integer
+              description: Next NF-e number configured
+              example: 4567
+    ShippingMethod:
+      type: object
+      description: A shipping method as exposed to API clients
+      required:
+        - id
+        - carrier_name
+        - shipping_type
+        - delivery_type
+        - country
+        - is_cod
+      properties:
+        id:
+          type: integer
+          description: Shipping method id
+          example: 12
+        carrier_name:
+          type: string
+          description: Customer-facing carrier name
+          example: ESTAFETA
+        shipping_type:
+          type: string
+          description: Scope of the method
+          enum:
+            - national
+            - international
+            - pickup
+          example: national
+        delivery_type:
+          type: string
+          description: Delivery service level
+          enum:
+            - SameDay
+            - NextDay
+            - Ground
+            - Pickup
+            - International
+          example: Ground
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2 country of the method
+          example: MX
+        is_cod:
+          type: boolean
+          description: Whether this is a dedicated cash-on-delivery method
+          example: false
+    ShippingCoverage:
+      description: >-
+        Result of a coverage check. Either the selected shipping method, or `id: null` with a message when
+        nothing covers the destination.
+      oneOf:
+        - $ref: "#/components/schemas/ShippingMethod"
+        - type: object
+          required:
+            - id
+            - message
+          properties:
+            id:
+              type: "null"
+              description: Always null when no method covers the destination
+              example: null
+            message:
+              type: string
+              description: Explanation
+              example: no compatible shipping method found.
+    EtaRange:
+      type: object
+      description: Estimated delivery window, in UTC
+      required:
+        - range_begin
+        - range_end
+      properties:
+        range_begin:
+          type: string
+          format: date-time
+          description: Start of the estimated delivery window
+          example: "2026-10-14T06:00:00.000Z"
+        range_end:
+          type: string
+          format: date-time
+          description: End of the estimated delivery window
+          example: "2026-10-16T05:59:59.999Z"
+    ShippingQuote:
+      type: object
+      description: >-
+        One shipping option. Regular carrier options carry the first seven fields; click-and-collect options
+        (`is_click_and_collect: true`) add the pickup-point fields.
+      required:
+        - shipping_method_id
+        - carrier_name
+        - carrier_delivery
+        - quoted_weight_kg
+        - delivery_sla_in_hours
+        - price
+      properties:
+        shipping_method_id:
+          type: integer
+          description: Id of the shipping method to use when creating the order
+          example: 12
+        carrier_name:
+          type: string
+          description: Carrier name
+          example: ESTAFETA
+        carrier_delivery:
+          type: string
+          description: Delivery service level
+          enum:
+            - SameDay
+            - NextDay
+            - Ground
+            - Pickup
+            - International
+          example: Ground
+        quoted_weight_kg:
+          type: number
+          description: Weight the price was computed for (greater of declared and volumetric weight)
+          example: 2
+        delivery_sla_in_hours:
+          type:
+            - integer
+            - "null"
+          description: Total delivery SLA in hours; null for click-and-collect options
+          example: 72
+        delivery_eta_range:
+          description: Estimated delivery window. Omitted when unavailable; null for click-and-collect options.
+          oneOf:
+            - $ref: "#/components/schemas/EtaRange"
+            - type: "null"
+        price:
+          type:
+            - number
+            - "null"
+          description: Shipping price in the store's currency
+          example: 149
+        is_click_and_collect:
+          type: boolean
+          description: Present and true for pickup-point options
+          example: true
+        service_code:
+          type: string
+          description: Pickup point identifier to send as `click_and_collect_service_code` when creating the order
+          example: CUBBOCNCCUBBOCUBBO001
+        location_name:
+          type: string
+          description: Pickup point name
+          example: Punto Cubbo Centro
+        distance_km:
+          type:
+            - number
+            - "null"
+          description: Distance from the destination zip code in kilometers
+          example: 0.8
+        pickup_address:
+          type: string
+          description: Pickup point address
+          example: Calle Centro 300, CDMX, 06000
+        cnc_pricing_basis:
+          type: string
+          description: Which input priced the pickup option
+          enum:
+            - cart_value
+            - item_count
+          example: cart_value
+    PickupPoint:
+      type: object
+      description: A pickup point eligible for click and collect
+      required:
+        - carrier
+        - service_code
+        - name
+        - address
+        - distance_km
+        - schedule
+      properties:
+        carrier:
+          type: string
+          description: Pickup carrier
+          enum:
+            - ESTAFETA
+            - DHL
+            - CUBBO
+            - Punto Post
+          example: ESTAFETA
+        service_code:
+          type: string
+          description: Identifier of the point, to send as `service_code` when converting the order
+          example: CUBBOCNCESTEST001
+        name:
+          type: string
+          description: Point name
+          example: Sucursal Centro
+        address:
+          type: string
+          description: Point address
+          example: Av. Reforma 123, CDMX
+        distance_km:
+          type:
+            - number
+            - "null"
+          description: Distance from the searched postal code in kilometers; null when the carrier does not report it
+          example: 1.2
+        schedule:
+          type:
+            - string
+            - "null"
+          description: Opening hours as reported by the carrier; null when unknown
+          example: "Lun a Vie: 10:00-18:00, Sab: 10:00-14:00, Dom: cerrado"
+    PickupPointsResponse:
+      type: object
+      required:
+        - cnc_eligible
+        - pickup_points
+      properties:
+        cnc_eligible:
+          type: boolean
+          description: Whether the order can be converted to click and collect
+          example: true
+        code:
+          type: string
+          description: Present only when `cnc_eligible` is false; why the order is not eligible
+          enum:
+            - CNC_INVALID_ORDER_STATUS
+            - CNC_NOT_ENABLED_FOR_STORE
+            - CNC_NO_CARRIERS_ENABLED_FOR_STORE
+            - CNC_MISSING_POSTAL_CODE
+            - CNC_ORIGINAL_NOT_CUBBO_BILLED
+            - CNC_ORIGINAL_NOT_NATIONAL_SHIPPING
+            - CNC_RATE_CARD_UNAVAILABLE
+          example: CNC_NOT_ENABLED_FOR_STORE
+        pickup_points:
+          type: array
+          description: Eligible points; empty when the order is not eligible
+          items:
+            $ref: "#/components/schemas/PickupPoint"
+    ConvertToClickAndCollectRequest:
+      type: object
+      required:
+        - store_id
+        - service_code
+      properties:
+        store_id:
+          type: integer
+          description: Id of the store that owns the order; must belong to your account
+          example: 1234
+        service_code:
+          type: string
+          description: Pickup point identifier from `GET /orders/{order_id}/pickup-points`
+          example: CUBBOCNCESTEST001
+    ConvertedWithoutOrder:
+      type: object
+      description: Returned when the conversion succeeded but the order could not be rendered
+      required:
+        - converted
+      properties:
+        converted:
+          type: boolean
+          description: Always true
+          example: true
+    ClickAndCollectError:
+      type: object
+      description: 404 body of the click-and-collect endpoints
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: "`Order not found` or `store_not_found`"
+          example: Order not found
+        code:
+          type: string
+          description: Present for order lookups
+          enum:
+            - ORDER_NOT_FOUND
+          example: ORDER_NOT_FOUND
+    ClickAndCollectConversionError:
+      type: object
+      description: >-
+        422 body of the conversion endpoint. Parameter errors carry only `error`; business rejections add a
+        stable `code`.
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable reason
+          example: Order is already click and collect
+        code:
+          type: string
+          description: Stable rejection code
+          enum:
+            - INVALID_ORDER_STATUS
+            - ALREADY_CLICK_AND_COLLECT
+            - STORE_EDIT_RESTRICTED
+            - INVALID_CNC_SERVICE_CODE
+            - CNC_CARRIER_TEMPORARILY_UNAVAILABLE
+            - CNC_NOT_ENABLED_FOR_STORE
+            - CNC_CARRIER_NOT_ENABLED_FOR_STORE
+            - CNC_SHIPPING_METHOD_NOT_FOUND
+            - CNC_ORIGINAL_NOT_CUBBO_BILLED
+            - CNC_ORIGINAL_NOT_NATIONAL_SHIPPING
+            - CNC_PRICE_EXCEEDS_ORIGINAL
+            - CNC_RATE_CARD_UNAVAILABLE
+            - CNC_LOCATION_CONFIRMATION_FAILED
+          example: ALREADY_CLICK_AND_COLLECT
+        click_and_collect_metadata:
+          type:
+            - object
+            - "null"
+          description: >-
+            Only with `ALREADY_CLICK_AND_COLLECT`; the order's current pickup selection (public fields only),
+            or null if it carries none
+          additionalProperties: true
+          example:
+            carrier_name: Estafeta
+            service_code: CUBBOCNCESTEST001
+    ClickAndCollectUnexpectedError:
+      type: object
+      description: 500 body of the click-and-collect endpoints
+      required:
+        - error
+        - timestamp
+      properties:
+        error:
+          type: string
+          description: Always `unexpected_error`
+          example: unexpected_error
+        timestamp:
+          type: integer
+          description: Unix timestamp to quote when contacting support
+          example: 1700000000
+    PickupLocation:
+      type: object
+      description: A pickup location as shown on the buyer tracking page
+      required:
+        - service_name
+        - service_code
+        - source
+        - description
+      properties:
+        service_name:
+          type: string
+          description: Spanish display label with distance, point name and (for some carriers) opening hours
+          example: >-
+            Recolecta en punto físico a 1.5km - Estafeta Insurgentes - Lun a Vie: 10:00-18:00, Sáb:
+            10:00-14:00, Dom: cerrado
+        service_code:
+          type: string
+          description: Identifier of the point (`CUBBOCNC` + carrier code + location id)
+          example: CUBBOCNCESTEST001
+        source:
+          type: string
+          description: Point address
+          example: Av. Insurgentes 100, CDMX
+        description:
+          type: string
+          description: Point address (same as `source`)
+          example: Av. Insurgentes 100, CDMX
+    PickupLocationsResponse:
+      type: object
+      required:
+        - rates
+      properties:
+        rates:
+          type: array
+          description: Pickup locations found
+          items:
+            $ref: "#/components/schemas/PickupLocation"
+        cnc_eligible:
+          type: boolean
+          description: Present only when `order_id` was sent; whether that order can be converted to click and collect
+          example: true
+        code:
+          type: string
+          description: >-
+            Present only when `cnc_eligible` is false; why the order is not eligible, or
+            `CNC_INVALID_ORDER_ID` when `order_id` could not be resolved
+          enum:
+            - CNC_INVALID_ORDER_ID
+            - CNC_INVALID_ORDER_STATUS
+            - CNC_MISSING_POSTAL_CODE
+            - CNC_ORIGINAL_NOT_CUBBO_BILLED
+            - CNC_ORIGINAL_NOT_NATIONAL_SHIPPING
+            - CNC_RATE_CARD_UNAVAILABLE
+          example: CNC_INVALID_ORDER_STATUS

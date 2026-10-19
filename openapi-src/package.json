@@ -1,0 +1,11 @@
+{
+  "name": "cubbo-openapi-src",
+  "private": true,
+  "description": "Builds ../openapi.yaml from openapi.base.yaml and the per-domain fragments.",
+  "scripts": {
+    "build": "node merge.js ../openapi.yaml"
+  },
+  "dependencies": {
+    "js-yaml": "4.1.0"
+  }
+}

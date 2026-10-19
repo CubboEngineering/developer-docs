@@ -1,0 +1,1687 @@
+paths:
+  /orders:
+    post:
+      tags: [Orders]
+      operationId: createOrder
+      summary: Create an order
+      description: |
+        Creates a sales order for a store whose warehouse is in Mexico, Colombia, Chile or the
+        United States, and queues it for processing. Use it for every non-Brazil store; a store
+        served from a Brazil warehouse is refused and must use `POST /brazil/orders`. The request
+        needs a store, a unique `order_number` per store, a recipient address, at least one product
+        line and a way to pick the carrier:
+
+        - `shipping_line_code`: the exact name of a shipping method you created in the Cubbo app
+          (**Integrations** > Open API > **Shipping Methods**). Cubbo picks the carrier with the
+          configuration assigned to it.
+        - `shipping_method_id`: a specific Cubbo shipping method, taken from the `shipping_method_id` of
+          an option returned by `GET /shipping-methods/quote`.
+
+        - The order is returned immediately in its initial status. Address, coverage, stock and
+          carrier validations run asynchronously; poll `GET /orders` and read `status`,
+          `has_missing_info` and `missing_info` to learn whether it was accepted.
+        - Every product is identified by SKU and must already exist in the store; unknown SKUs
+          reject the whole request.
+        - `zip_code` is mandatory when the warehouse is in Mexico (and Brazil); it is optional for
+          Chile and Colombia.
+        - Duplicate protection: an `order_number` that already exists in the store answers 422 with
+          code `ORDER_ALREADY_EXISTS` and the existing `order_id` in `context`. While another request
+          for the same `store_id` + `order_number` is still being processed you get 409
+          `DUPLICATE_REQUEST_IN_FLIGHT` with a `Retry-After` header; retry after that delay and you
+          will converge on the real outcome (200, 422 or `ORDER_ALREADY_EXISTS`).
+        - Complementary carrier services (`has_carrier_insurance`, `cod_amount`,
+          `requires_document_return`, `requires_pickup_on_delivery`) are currently honoured only for
+          stores with a warehouse in Chile; sending `true` (or a non-zero amount) from any other
+          country is refused with a typed error code rather than silently ignored.
+        - Click and collect: send `is_click_and_collect: true` and the `click_and_collect_service_code`
+          you obtained from `GET /carrier-services/pickup-locations`. Cubbo replaces the shipping
+          method you sent with the pickup carrier's method. A full shipping address is still required.
+        - `is_b2b` only matters for stores enabled for both B2B and D2C ("mixed"); omit it to create a
+          consumer (D2C) order. Stores enabled for a single model always get that model.
+        - Error bodies on this endpoint carry an `error` message plus a machine-readable `code`
+          (empty string or null when the error has no code) and an optional `context` object.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderCreateRequest'
+            examples:
+              basic:
+                summary: Minimal sale with a Cubbo shipping method
+                value:
+                  store_id: 1234
+                  order_number: "ORD-0001"
+                  shipping_method_id: 12
+                  shipping:
+                    first_name: "Jaime"
+                    last_name: "Carrera"
+                    phone: "5555555555"
+                    email: "buyer@example.com"
+                    address1: "Av. Reforma 123"
+                    address2: "Piso 4"
+                    references: "Blue door"
+                    country: "MX"
+                    city: "Ciudad de México"
+                    province: "CDMX"
+                    zip_code: "06600"
+                  products:
+                    - sku: "SKU-RED-M"
+                      quantity: 2
+              shippingLineCode:
+                summary: Carrier picked from your integration's shipping configuration
+                value:
+                  store_id: 1234
+                  order_number: "ORD-0002"
+                  shipping_line_code: "Express"
+                  is_paid: true
+                  channel_name: "my-webstore"
+                  channel_order_id: "WEB-98765"
+                  shipping:
+                    first_name: "Ana"
+                    last_name: "Pérez"
+                    phone: "5512345678"
+                    email: "buyer@example.com"
+                    address1: "Calle Falsa 123"
+                    country: "MX"
+                    city: "Guadalajara"
+                    province: "Jalisco"
+                    zip_code: "44100"
+                  billing:
+                    first_name: "Ana"
+                    last_name: "Pérez"
+                    phone: "5512345678"
+                    email: "buyer@example.com"
+                    address1: "Calle Falsa 123"
+                    country: "MX"
+                    city: "Guadalajara"
+                    province: "Jalisco"
+                    zip_code: "44100"
+                  products:
+                    - sku: "SKU-RED-M"
+                      quantity: 1
+                    - sku: "SKU-BLUE-L"
+                      quantity: 3
+              chileCashOnDelivery:
+                summary: Chile order with partial cash-on-delivery and carrier insurance
+                value:
+                  store_id: 1234
+                  order_number: "ORD-0003"
+                  shipping_method_id: 45
+                  is_cod: true
+                  cod_amount: 30000
+                  has_carrier_insurance: true
+                  shipping:
+                    first_name: "Jaime"
+                    last_name: "Carrera"
+                    phone: "56900000000"
+                    email: "buyer@example.com"
+                    address1: "Av Test 123"
+                    country: "CL"
+                    city: "Santiago"
+                    province: "Región Metropolitana"
+                    zip_code: "8320000"
+                  products:
+                    - sku: "SKU-RED-M"
+                      quantity: 1
+              clickAndCollect:
+                summary: Click and collect at a carrier pickup point
+                value:
+                  store_id: 1234
+                  order_number: "ORD-0004"
+                  shipping_method_id: 12
+                  is_click_and_collect: true
+                  click_and_collect_service_code: "CUBBOCNCEST001"
+                  shipping:
+                    first_name: "Jaime"
+                    last_name: "Carrera"
+                    phone: "5555555555"
+                    email: "buyer@example.com"
+                    address1: "Av. Reforma 123"
+                    country: "MX"
+                    city: "Ciudad de México"
+                    province: "CDMX"
+                    zip_code: "06600"
+                  products:
+                    - sku: "SKU-RED-M"
+                      quantity: 1
+      responses:
+        '200':
+          description: >-
+            Order created. The body is the full order as Cubbo stores it, including its lines and the
+            resolved shipping method. The order is still in its initial status; processing happens
+            asynchronously.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+              example:
+                id: 987654
+                store_id: 1234
+                order_number: "ORD-0001"
+                status: "initial"
+                channel_created_at: "2026-10-12T15:04:05.000Z"
+                order_date: "2026-10-12T15:04:05.000Z"
+                shipping_date: null
+                pending_at: null
+                shipping_email: "buyer@example.com"
+                shipping_status: null
+                is_paid: true
+                is_cod: false
+                cod_amount: null
+                requires_document_return: false
+                requires_pickup_on_delivery: false
+                has_carrier_insurance: false
+                has_missing_info: false
+                missing_info: null
+                shipping_address_1: "Av. Reforma 123"
+                currency: "MXN"
+                total_price: "598.0"
+                discount_price: "0.0"
+                buyer_shipping_price: null
+                extra_fees_price: null
+                is_pick_and_ship: false
+                is_b2b: false
+                pick_n_ship_status: null
+                return_shipping_labels: []
+                shipping:
+                  first_name: "Jaime"
+                  last_name: "Carrera"
+                  company: null
+                  phone: "5555555555"
+                  address_1: "Av. Reforma 123"
+                  address_2: "Piso 4"
+                  email: "buyer@example.com"
+                  zip_code: "06600"
+                  country: "MX"
+                  state: "CDMX"
+                  city: "Ciudad de México"
+                  number: null
+                  interior_number: null
+                  neighborhood: null
+                  references: "Blue door"
+                billing:
+                  first_name: null
+                  last_name: null
+                  company: null
+                  phone: null
+                  tax_id: null
+                  tax_regime: null
+                  state_registration: null
+                  address_1: null
+                  address_2: null
+                  number: null
+                  interior_number: null
+                  neighborhood: null
+                  email: null
+                  zip_code: null
+                  country: null
+                  state: null
+                  city: null
+                delivery_tracking:
+                  - shipping_number: null
+                    tracking_url: null
+                    cubbo_tracking_url: "https://tracking.cubbo.com/t/abc123"
+                    service_id: null
+                    shipping_status: null
+                    package_index: 1
+                    total_packages: 1
+                proof_of_delivery: null
+                estimated_time_arrival: null
+                delivered_at: null
+                updated_at: "2026-10-12T15:04:05.000Z"
+                is_click_and_collect: false
+                click_and_collect_metadata: null
+                latest_estimated_time_arrival_range: null
+                channel_order_id: null
+                channel_name: "openapi"
+                channel_shipping_line_code: null
+                warehouse_timezone: "America/Mexico_City"
+                is_multi_package: false
+                is_first_time_buyer: true
+                is_subscription_renewal: false
+                shipping_method:
+                  id: 12
+                  shipping_name: "Estafeta Terrestre"
+                  is_active: true
+                  carrier_name: "ESTAFETA"
+                  shipping_type: "national"
+                  delivery_type: "Ground"
+                  country: "MX"
+                order_lines:
+                  - id: 55501
+                    name: "Red T-shirt M"
+                    sku: "SKU-RED-M"
+                    quantity: 2
+                    generated: false
+                    price_per_item: "299.0"
+                    discount_per_item: "0.0"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/DuplicateRequestInFlight'
+        '422':
+          description: >-
+            Validation or business error. `code` identifies the failure when one is defined; `context`
+            carries extra data for some codes (for example the existing `order_id` on
+            `ORDER_ALREADY_EXISTS`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderCreateError'
+              examples:
+                missingParam:
+                  summary: A required parameter is missing (any `param!` failure)
+                  value: {error: "Parameter store_id is required", code: null, context: null}
+                invalidParamType:
+                  summary: A parameter has the wrong type
+                  value: {error: "'abc' is not a valid Integer", code: null, context: null}
+                codAmountNegative:
+                  summary: cod_amount below its minimum
+                  value: {error: "Parameter cod_amount cannot be less than 0", code: null, context: null}
+                brazilStore:
+                  summary: The store ships from Brazil
+                  value: {error: "store is from Brazil, use /brazil/orders endpoint", code: "", context: null}
+                missingZipCode:
+                  value: {error: "zip_code is required for this warehouse's country", code: "MISSING_ZIP_CODE", context: null}
+                carrierInsuranceNotAvailable:
+                  value: {error: "has_carrier_insurance is only available for stores in CL", code: "CARRIER_INSURANCE_NOT_AVAILABLE", context: null}
+                codAmountNotAvailable:
+                  value: {error: "cod_amount is only available for stores in CL. Cash on delivery elsewhere collects the order total.", code: "COD_AMOUNT_NOT_AVAILABLE", context: null}
+                documentReturnNotAvailable:
+                  value: {error: "requires_document_return is only available for stores in CL.", code: "DOCUMENT_RETURN_NOT_AVAILABLE", context: null}
+                pickupOnDeliveryNotAvailable:
+                  value: {error: "requires_pickup_on_delivery is only available for stores in CL.", code: "PICKUP_ON_DELIVERY_NOT_AVAILABLE", context: null}
+                pickupOnDeliveryB2b:
+                  summary: The order resolves to B2B (explicit is_b2b or a B2B-only store)
+                  value: {error: "requires_pickup_on_delivery is a D2C-only service.", code: "PICKUP_ON_DELIVERY_B2B_UNSUPPORTED", context: null}
+                pickupOnDeliveryReturnMethodNotConfigured:
+                  value: {error: "The dedicated Blue Express return method is not configured.", code: "PICKUP_ON_DELIVERY_RETURN_METHOD_NOT_CONFIGURED", context: null}
+                documentReturnAndPickupExclusive:
+                  value: {error: "requires_document_return and requires_pickup_on_delivery cannot be combined on the same order.", code: "DOCUMENT_RETURN_PICKUP_ON_DELIVERY_EXCLUSIVE", context: null}
+                channelIntegrationNotFound:
+                  summary: Your API credentials are not linked to an API integration on this store
+                  value: {error: "Channel integration for openapi not found, contact support.", code: "", context: null}
+                orderAlreadyExists:
+                  value: {error: "order with order_number ORD-0001 already exists with id 987654", code: "ORDER_ALREADY_EXISTS", context: {order_id: 987654}}
+                shippingMethodMissing:
+                  summary: Neither shipping_method_id nor shipping_line_code was sent
+                  value: {error: "Information is missing, shipping_method_id or shipping_line_code", code: "400", context: null}
+                skusMissing:
+                  value: {error: "Provide skus for all products", code: "", context: null}
+                noSkus:
+                  value: {error: "No skus provided", code: "", context: null}
+                skuNotFound:
+                  value: {error: "skus SKU-UNKNOWN not found in Cubbo", code: "", context: null}
+                unitCodeRequired:
+                  summary: The product tracks personalized units, so each line needs a unit_code
+                  value: {error: "unit_code is required for sku SKU-RED-M: each unit belongs to one recipient", code: "UNIT_CODE_REQUIRED", context: null}
+                personalizedUnitInKit:
+                  value: {error: "sku KIT-01 is a kit holding a personalized unit, which cannot be ordered as a kit", code: "PERSONALIZED_UNIT_IN_KIT", context: null}
+                invalidUnitCodeLine:
+                  value: {error: "unit_code needs a sale line of quantity 1 of a product that requires unit codes (sku SKU-RED-M)", code: "INVALID_UNIT_CODE_LINE", context: null}
+                duplicateUnitCode:
+                  value: {error: "unit_code UC-0001 is requested twice", code: "DUPLICATE_UNIT_CODE", context: null}
+                cncServiceCodeInvalid:
+                  value: {error: "click_and_collect_service_code is invalid", code: "404", context: null}
+                cncLocationNotConfirmed:
+                  value: {error: "Couldn't confirm cnc location for CUBBOCNCEST001, try requesting a new cnc service code", code: "404", context: null}
+                cncNoShippingMethod:
+                  value: {error: "No shipping method found for click and collect with service code CUBBOCNCEST001, contact support", code: "404", context: null}
+                shippingLineCodeNotFound:
+                  value: {error: "No shipping configuration found with name 'Express' for this integration", code: "404", context: null}
+                shippingMethodNoCoverage:
+                  value: {error: "The shipping method ESTAFETA does not have coverage in this zip code, 06600", code: "404", context: null}
+                internationalMethodOnDomesticOrder:
+                  value: {error: "The shipping method DHL is international and this order ships within MX. Assign a national shipping method.", code: "NATIONAL_SHIPPING_METHOD_EXPECTED", context: null}
+                storeBusinessModelUnset:
+                  summary: The store is enabled for neither B2B nor D2C; contact support
+                  value: {error: "Store 1234 has neither b2b nor d2c enabled", code: "store_business_model_unset", context: {store_id: 1234, b2b: false, d2c: false}}
+                shippingDocumentUrlUnreachable:
+                  value: {error: "Information is missing, unable to obtain pdf document from url: https://example.com/label.pdf. response: 404 Not Found", code: "400", context: null}
+                shippingDocumentTypeInvalid:
+                  value: {error: "Information is missing, The document type file is not valid.", code: "400", context: null}
+        '500':
+          description: Unexpected error. Nothing was created; retry later or contact support.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: {error: "unexpected error"}
+
+  /orders/create-and-ship:
+    post:
+      tags: [Orders]
+      operationId: createAndShipOrder
+      summary: Create a pick-and-ship order and buy its labels
+      description: |
+        Creates a pick-and-ship order and generates its carrier shipping labels in the same call,
+        returning the labels instead of the order. Use it when your own warehouse packs the parcel
+        and only needs Cubbo's carrier contract: you declare the physical packages (weight and
+        dimensions) and Cubbo buys one label per package. Unlike `POST /orders`, the order is
+        validated synchronously, the shipping method must be resolvable now, and the order is left
+        packed with its labels ready to download.
+
+        - Choose the carrier with exactly one of `shipping_method_id` (a Cubbo shipping method) or
+          `integration_shipping_method` (the name of a shipping configuration of your integration).
+          Sending both, or neither, is refused.
+        - `products` is optional; lines are not picked from Cubbo stock, they only describe the
+          content. Each SKU must exist in the store.
+        - Every package is matched to the closest Cubbo package size by the larger of its real
+          weight and its volumetric weight; if none fits, the request fails with
+          `NO_COMPATIBLE_PACKAGE`.
+        - Not available for stores where Cubbo issues fiscal invoices (for example Brazil): those
+          answer `INVOICING_NOT_IMPLEMENTED`.
+        - The order is always a consumer (D2C), paid, non cash-on-delivery order with zero prices.
+        - Duplicate protection works like `POST /orders`: 422 `ORDER_ALREADY_EXISTS` for an existing
+          `order_number`, 409 `DUPLICATE_REQUEST_IN_FLIGHT` while another request for the same
+          `order_number` is in progress.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderCreateAndShipRequest'
+            example:
+              store_id: 1234
+              order_number: "PS-0001"
+              shipping_method_id: 12
+              shipping:
+                first_name: "Jaime"
+                last_name: "Carrera"
+                phone: "5555555555"
+                email: "buyer@example.com"
+                address1: "Av. Reforma 123"
+                country: "MX"
+                city: "Ciudad de México"
+                province: "CDMX"
+                zip_code: "06600"
+              products:
+                - sku: "SKU-RED-M"
+                  quantity: 1
+              packages:
+                - weight_kg: 1.2
+                  length_cm: 30
+                  width_cm: 20
+                  height_cm: 10
+      responses:
+        '200':
+          description: Order created and packed; one shipping label per requested package.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CreateAndShipLabel'
+              example:
+                - id: 778899
+                  order_id: 987655
+                  billing_file: null
+                  shipping_number: "1234567890"
+                  label_file:
+                    path: "/rails/active_storage/blobs/redirect/abc123/label.pdf"
+                    url: "https://api.cubbo.com/rails/active_storage/blobs/redirect/abc123/label.pdf"
+                    filename: "label.pdf"
+                    byte_size: 48213
+                    content_type: "application/pdf"
+                  label_type: "shipping"
+                  tracking_url: "https://carrier.example.com/track/1234567890"
+                  cubbo_tracking_url: "https://tracking.cubbo.com/t/abc123"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/DuplicateRequestInFlight'
+        '422':
+          description: >-
+            Validation or business error. Most failures use the `error`/`code`/`context` shape. When
+            the assembled order fails Cubbo's order validation the body is instead a list of
+            field-level errors (`errors`), each with the offending `field` and a `code`.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/OrderCreateError'
+                  - $ref: '#/components/schemas/OrderFieldValidationError'
+              examples:
+                missingParam:
+                  value: {error: "Parameter packages is required", code: null, context: null}
+                nameTooShort:
+                  value: {error: "Parameter first_name cannot have length less than 3", code: null, context: null}
+                packageWeightTooSmall:
+                  value: {error: "Parameter weight_kg cannot be less than 0.01", code: null, context: null}
+                missingShippingMethod:
+                  value: {error: "provide either shipping_method_id or integration_shipping_method", code: "MISSING_SHIPPING_METHOD", context: null}
+                bothShippingMethods:
+                  value: {error: "provide either shipping_method_id or integration_shipping_method, not both", code: "INVALID_SHIPPING_METHOD", context: null}
+                missingZipCode:
+                  value: {error: "zip_code is required for this warehouse's country", code: "MISSING_ZIP_CODE", context: null}
+                channelIntegrationNotFound:
+                  value: {error: "Channel integration for openapi not found, contact support.", code: "", context: null}
+                orderAlreadyExists:
+                  value: {error: "order with order_number PS-0001 already exists with id 987655", code: "ORDER_ALREADY_EXISTS", context: {order_id: 987655}}
+                productNotFound:
+                  value: {error: "Product SKU-UNKNOWN was not found in this store", code: "PRODUCT_NOT_FOUND", context: null}
+                invoicingNotImplemented:
+                  summary: The store's country requires Cubbo-issued invoices
+                  value: {error: "Order  requires an invoice to ship", code: "INVOICING_NOT_IMPLEMENTED", context: null}
+                storeOrShippingMethodNotFound:
+                  summary: The store_id or shipping_method_id does not exist
+                  value: {error: "Couldn't find ShippingMethod with 'id'=999999", code: null, context: null}
+                integrationShippingMethodNotFound:
+                  value: {error: "No shipping configuration found with name 'Express' for this integration", code: "MISSING_INTEGRATION_SHIPPING_METHOD", context: null}
+                undeterminableShippingMethod:
+                  value: {error: "Unable to determine shipping method for order", code: "UNDETERMINABLE_SHIPPING_METHOD", context: null}
+                noCompatiblePackage:
+                  value: {error: "No compatible package found for order id 987655. Contact support.", code: "NO_COMPATIBLE_PACKAGE", context: null}
+                shippingCostUnavailable:
+                  summary: The shipping method has no tariff for the package weight
+                  value: {error: "Shipping cost not configured for the order's weight in the assigned shipping method", code: "SHIPPING_COST_UNAVAILABLE", context: null}
+                storeBusinessModelUnset:
+                  value: {error: "Store 1234 has neither b2b nor d2c enabled", code: "store_business_model_unset", context: {store_id: 1234, b2b: false, d2c: false}}
+                orderValidationFailed:
+                  summary: Field-level validation errors (for example an international method on a domestic address)
+                  value:
+                    errors:
+                      - field: "shipping_method"
+                        code: "NATIONAL_SHIPPING_METHOD_EXPECTED"
+                        additional_info: {}
+                      - field: "shipping_phone"
+                        code: "MISSING_SHIPPING_FIELD"
+                        additional_info: {}
+        '500':
+          description: Unexpected error (including carrier failures while buying the label).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: {error: "unexpected error"}
+
+  /brazil/orders:
+    post:
+      tags: [Orders]
+      operationId: createBrazilOrder
+      summary: Create an order for a Brazil store
+      description: |
+        Creates an order for a store served from a Brazil warehouse. Brazil orders carry the fiscal
+        data Cubbo needs to issue the NF-e (Nota Fiscal Eletrônica, the Brazilian electronic
+        invoice): per-line prices, the buyer's shipping cost and a billing block with the buyer's
+        tax id (CPF for a natural person, CNPJ for a company). `order_type` selects what kind of
+        order you get; it defaults to `SALE`.
+
+        - `SALE` and `DONATION` share the full contract: recipient, billing, shipping method,
+          `buyer_shipping_price` and a `price_per_item` on every line. A donation is only
+          different fiscally (the NF-e is issued with a donation purpose).
+        - The four removal types (`REMOVE_STOCK`, `REMOVE_DAMAGED_STOCK`, `REMOVE_EXPIRED_STOCK`,
+          `REMOVE_LOST_STOCK`) return stock to you. Cubbo synthesizes the recipient from the
+          warehouse, the billing data from your store's fiscal registration and the shipping method
+          from the warehouse's pickup method, so `shipping`, `billing`, `shipping_method_id` and
+          `shipping_line_code` are optional and ignored. `price_per_item` becomes optional (falls back
+          to the product's registered price), `quantity` must be at least 1, and you may hand in your
+          own NF-e with `invoice_xml` or `client_invoice`.
+        - `REMOVE_LOST_STOCK` is applied synchronously and all-or-nothing: units already recorded
+          as lost are written off and the order comes back already `shipped`. It is available only
+          to stores that have opted out of Cubbo issuing their removal NF-es (ask Cubbo support).
+        - `STOCK_TRANSFER_OUT` is accepted by the parameter check but is reserved for Cubbo's
+          stock-transfer feature; do not send it. `C2C` is refused.
+        - Sale orders are validated asynchronously (CEP, CPF/CNPJ length, NCM, totals); check
+          `status`, `has_missing_info` and `missing_info` on `GET /orders`.
+        - Duplicate protection: an existing `order_number` in the store answers 422; a request still
+          in progress for the same `order_number` answers 409 `DUPLICATE_REQUEST_IN_FLIGHT`.
+        - Error bodies on this endpoint are `{"error": "<message>"}` with no code, except removal
+          orders that fail field validation, which return `{"errors": [...]}`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BrazilOrderCreateRequest'
+            examples:
+              sale:
+                summary: Sale to a natural person (CPF)
+                value:
+                  store_id: 1234
+                  order_number: "ORD-BR-0001"
+                  shipping_method_id: 12
+                  buyer_shipping_price: 15.90
+                  shipping:
+                    first_name: "Ana"
+                    last_name: "Silva"
+                    phone: "5511999999999"
+                    email: "buyer@example.com"
+                    address1: "Av. Paulista"
+                    number: "1234"
+                    interior_number: "Apto 45"
+                    neighborhood: "Bela Vista"
+                    country: "BR"
+                    city: "São Paulo"
+                    province: "SP"
+                    zip_code: "01310100"
+                  billing:
+                    first_name: "Ana"
+                    last_name: "Silva"
+                    phone: "5511999999999"
+                    email: "buyer@example.com"
+                    address1: "Av. Paulista"
+                    number: "1234"
+                    neighborhood: "Bela Vista"
+                    country: "BR"
+                    city: "São Paulo"
+                    province: "SP"
+                    zip_code: "01310100"
+                    tax_id: "000.000.000-00"
+                    tax_regime: "PHYSICAL"
+                  products:
+                    - sku: "SKU-RED-M"
+                      quantity: 2
+                      price_per_item: 59.90
+                      discount_per_item: 5.00
+              legalPerson:
+                summary: Sale to a company (CNPJ)
+                value:
+                  store_id: 1234
+                  order_number: "ORD-BR-0002"
+                  shipping_line_code: "Express"
+                  buyer_shipping_price: 0.0
+                  is_b2b: true
+                  shipping:
+                    first_name: "Carlos"
+                    last_name: "Souza"
+                    phone: "5511888888888"
+                    email: "buyer@example.com"
+                    address1: "Rua das Flores"
+                    number: "10"
+                    neighborhood: "Centro"
+                    country: "BR"
+                    city: "Campinas"
+                    province: "SP"
+                    zip_code: "13010000"
+                  billing:
+                    first_name: "Carlos"
+                    last_name: "Souza"
+                    phone: "5511888888888"
+                    email: "buyer@example.com"
+                    address1: "Rua das Flores"
+                    number: "10"
+                    neighborhood: "Centro"
+                    country: "BR"
+                    city: "Campinas"
+                    province: "SP"
+                    zip_code: "13010000"
+                    tax_id: "00.000.000/0000-00"
+                    tax_regime: "LEGAL"
+                    company: "Example Comércio LTDA"
+                    state_registration: "000000000"
+                  products:
+                    - sku: "SKU-RED-M"
+                      quantity: 10
+                      price_per_item: 49.90
+              removal:
+                summary: Stock removal with your own NF-e
+                value:
+                  store_id: 1234
+                  order_number: "REM-0001"
+                  order_type: "REMOVE_STOCK"
+                  products:
+                    - sku: "SKU-RED-M"
+                      quantity: 10
+                    - sku: "SKU-BLUE-L"
+                      quantity: 4
+                      price_per_item: 12.50
+                  client_invoice:
+                    key: "00000000000000000000000000000000000000000000"
+                    serie: "1"
+                    number: "987"
+      responses:
+        '200':
+          description: >-
+            Order created. Same payload as `POST /orders`. A `REMOVE_LOST_STOCK` order is returned
+            already in status `shipped`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+              example:
+                id: 987656
+                store_id: 1234
+                order_number: "ORD-BR-0001"
+                status: "initial"
+                channel_created_at: "2026-10-12T15:04:05.000Z"
+                order_date: "2026-10-12T15:04:05.000Z"
+                shipping_date: null
+                pending_at: null
+                shipping_email: "buyer@example.com"
+                shipping_status: null
+                is_paid: true
+                is_cod: false
+                cod_amount: null
+                requires_document_return: false
+                requires_pickup_on_delivery: false
+                has_carrier_insurance: false
+                has_missing_info: false
+                missing_info: null
+                shipping_address_1: "Av. Paulista"
+                currency: "BRL"
+                total_price: "125.7"
+                discount_price: "10.0"
+                buyer_shipping_price: "15.9"
+                extra_fees_price: null
+                is_pick_and_ship: false
+                is_b2b: false
+                pick_n_ship_status: null
+                return_shipping_labels: []
+                shipping:
+                  first_name: "Ana"
+                  last_name: "Silva"
+                  company: null
+                  phone: "5511999999999"
+                  address_1: "Av. Paulista"
+                  address_2: null
+                  email: "buyer@example.com"
+                  zip_code: "01310100"
+                  country: "BR"
+                  state: "SP"
+                  city: "São Paulo"
+                  number: "1234"
+                  interior_number: "Apto 45"
+                  neighborhood: "Bela Vista"
+                  references: null
+                billing:
+                  first_name: "Ana"
+                  last_name: "Silva"
+                  company: null
+                  phone: "5511999999999"
+                  tax_id: "000.000.000-00"
+                  tax_regime: "PHYSICAL"
+                  state_registration: null
+                  address_1: "Av. Paulista"
+                  address_2: null
+                  number: "1234"
+                  interior_number: null
+                  neighborhood: "Bela Vista"
+                  email: "buyer@example.com"
+                  zip_code: "01310100"
+                  country: "BR"
+                  state: "SP"
+                  city: "São Paulo"
+                delivery_tracking:
+                  - shipping_number: null
+                    tracking_url: null
+                    cubbo_tracking_url: "https://tracking.cubbo.com/t/def456"
+                    service_id: null
+                    shipping_status: null
+                    package_index: 1
+                    total_packages: 1
+                proof_of_delivery: null
+                estimated_time_arrival: null
+                delivered_at: null
+                updated_at: "2026-10-12T15:04:05.000Z"
+                is_click_and_collect: false
+                click_and_collect_metadata: null
+                latest_estimated_time_arrival_range: null
+                channel_order_id: null
+                channel_name: "openapi"
+                channel_shipping_line_code: null
+                warehouse_timezone: "America/Sao_Paulo"
+                is_multi_package: false
+                is_first_time_buyer: true
+                is_subscription_renewal: false
+                shipping_method:
+                  id: 12
+                  shipping_name: "Correios PAC"
+                  is_active: true
+                  carrier_name: "CORREIOS"
+                  shipping_type: "national"
+                  delivery_type: "Ground"
+                  country: "BR"
+                order_lines:
+                  - id: 55502
+                    name: "Red T-shirt M"
+                    sku: "SKU-RED-M"
+                    quantity: 2
+                    generated: false
+                    price_per_item: "59.9"
+                    discount_per_item: "5.0"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/DuplicateRequestInFlight'
+        '422':
+          description: >-
+            Validation or business error. The body is `{"error": "<message>"}` (no code). A removal
+            order that fails Cubbo's order validation (for example a warehouse with no pickup shipping
+            method) returns `{"errors": [{field, code, additional_info}]}` instead.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Error'
+                  - $ref: '#/components/schemas/OrderFieldValidationError'
+              examples:
+                missingParam:
+                  value: {error: "Parameter buyer_shipping_price is required"}
+                invalidOrderType:
+                  value: {error: "Parameter order_type must be within [\"SALE\", \"DONATION\", \"REMOVE_STOCK\", \"REMOVE_DAMAGED_STOCK\", \"REMOVE_EXPIRED_STOCK\", \"REMOVE_LOST_STOCK\", \"STOCK_TRANSFER_OUT\"]"}
+                invalidTaxRegime:
+                  value: {error: "Parameter tax_regime must be within [\"PHYSICAL\", \"LEGAL\"]"}
+                legalPersonMissingCompany:
+                  value: {error: "billing[company] is required for legal person"}
+                legalPersonMissingStateRegistration:
+                  value: {error: "billing[state_registration] is required for legal person"}
+                removalQuantityTooLow:
+                  value: {error: "Parameter quantity cannot be less than 1"}
+                discountGreaterThanPrice:
+                  value: {error: "Product discount can't be greater than price"}
+                discountWithoutPrice:
+                  value: {error: "discount_per_item requires price_per_item"}
+                channelIntegrationNotFound:
+                  value: {error: "Channel integration for openapi not found, contact support."}
+                shippingMethodMissing:
+                  value: {error: "Information is missing, shipping_method_id or shipping_line_code"}
+                orderAlreadyExists:
+                  value: {error: "Order with order_number 'ORD-BR-0001' already exist with id 987656"}
+                skuNotFound:
+                  value: {error: "skus SKU-UNKNOWN not found in Cubbo"}
+                skusMissing:
+                  value: {error: "Provide skus for all products"}
+                shippingLineCodeNotFound:
+                  value: {error: "No shipping configuration found with name 'Express' for this integration"}
+                shippingMethodNoCoverage:
+                  value: {error: "The shipping method CORREIOS does not have coverage in this zip code, 01310100"}
+                internationalMethodOnDomesticOrder:
+                  value: {error: "The shipping method DHL is international and this order ships within BR. Assign a national shipping method."}
+                storeBusinessModelUnset:
+                  value: {error: "Store 1234 has neither b2b nor d2c enabled"}
+                shippingDocumentUrlUnreachable:
+                  value: {error: "Information is missing, unable to obtain pdf document from url: https://example.com/label.pdf. response: 404 Not Found"}
+                removalLineWithoutSku:
+                  value: {error: "each product must carry a sku or a product_id"}
+                removalStoreWithoutWarehouse:
+                  value: {error: "store 1234 has no warehouse to remove stock from"}
+                removalLostStockNotAllowed:
+                  summary: REMOVE_LOST_STOCK on a store that expects Cubbo to issue its removal NF-e
+                  value: {error: "Orders::CreateRemovalOrder -> lost-stock removal is not available for store 1234"}
+                removalInsufficientStock:
+                  summary: REMOVE_EXPIRED_STOCK / REMOVE_DAMAGED_STOCK asks for more than the warehouse holds
+                  value: {error: "not enough EXPIRED stock in warehouse 7 -> SKU-RED-M: requested 4, 1 available"}
+                removalInsufficientLostStock:
+                  value: {error: "Orders::LostStockRemovalService -> insufficient LOST stock for product 4321 on order 987657 (found 1 of 2)"}
+                clientInvoiceNotAllowed:
+                  summary: client_invoice sent but manual NF-e entry is not enabled for the store
+                  value: {error: "Store issues fiscal invoices; manual client invoice is not allowed"}
+                removalValidationFailed:
+                  summary: Removal order failed field validation
+                  value:
+                    errors:
+                      - field: "shipping_method"
+                        code: "MISSING_SHIPPING_METHOD"
+                        additional_info: {}
+        '500':
+          description: Unexpected error (including an unknown `store_id`). Nothing was created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: {error: "unexpected error"}
+
+components:
+  responses:
+    DuplicateRequestInFlight:
+      description: >-
+        Another request for the same order number is still being processed (or a previous one was
+        interrupted; the lock expires on its own within a few minutes). Nothing was created by this
+        request. Wait for the number of seconds in the `Retry-After` header and retry with the same
+        payload; the retry converges on the real outcome.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema:
+            type: integer
+            example: 5
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DuplicateRequestInFlightError'
+          example:
+            error: "another request for order ORD-0001 is already being processed, retry in 5 seconds"
+            code: "DUPLICATE_REQUEST_IN_FLIGHT"
+            transaction_id: "c0ffee00-0000-4000-8000-000000000001"
+            transaction_key: "api_create_orders:1234:ORD-0001"
+
+  schemas:
+    OrderCreateRequest:
+      type: object
+      required: [store_id, order_number, shipping, products]
+      properties:
+        store_id:
+          type: integer
+          description: Id of the store the order belongs to. Your API credentials must have access to it.
+          example: 1234
+        order_number:
+          type: string
+          description: Your identifier for the order. Must be unique within the store.
+          example: "ORD-0001"
+        shipping_method_id:
+          type: integer
+          description: >-
+            Id of a Cubbo shipping method. Get it from `GET /shipping-methods/quote`: each option in the response has a
+            `shipping_method_id`. Required unless
+            `shipping_line_code` is sent. Coverage for the destination zip code is checked
+            synchronously.
+          example: 12
+        shipping_line_code:
+          type: string
+          description: >-
+            Exact name of a shipping method you created in the Cubbo app, under **Integrations**, your
+            Open API integration, **Shipping Methods** (field **Integration Delivery Method**). It must match
+            character by character: the comparison is case-sensitive and does not trim spaces. Cubbo uses the
+            shipping configuration assigned to that method to pick the carrier. See
+            [Set up your integration](/guides/setup#3-configure-shipping-methods).
+            Required unless `shipping_method_id` is sent; ignored when `shipping_method_id` is
+            present. If no active method has that name, Cubbo falls back to the integration's default
+            shipping method when one exists. If the method exists but no carrier can be resolved (no
+            coverage, unknown weight or tariff), the order is still created and lands in an error status
+            for Cubbo to resolve.
+          example: "Express"
+        is_paid:
+          type: boolean
+          description: Whether the order is already paid. Defaults to `true` when omitted.
+          default: true
+          example: true
+        is_click_and_collect:
+          type: boolean
+          description: >-
+            Set to `true` to deliver to a carrier pickup point. Requires
+            `click_and_collect_service_code`.
+          default: false
+          example: false
+        click_and_collect_service_code:
+          type: [string, 'null']
+          description: >-
+            Pickup point code returned by `GET /carrier-services/pickup-locations`, in the form
+            `CUBBOCNC` + carrier code (`EST`, `CUBBO`, `DHL`, `PUNTOPOST`, `99`) + location id.
+            Ignored (cleared) unless `is_click_and_collect` is `true`.
+          example: "CUBBOCNCEST001"
+        channel_name:
+          type: string
+          description: >-
+            Name of the sales channel the order came from, echoed back as `channel_name` on the
+            order.
+          example: "my-webstore"
+        channel_order_id:
+          type: string
+          description: Identifier of the order in your sales channel, echoed back as `channel_order_id`.
+          example: "WEB-98765"
+        is_b2b:
+          type: boolean
+          description: >-
+            Business-model classification. Only read for stores enabled for both B2B and D2C: omit
+            it (or send `false`) for a consumer order, send `true` for a B2B order. Stores enabled for
+            a single model always get that model regardless of this value.
+          example: false
+        has_carrier_insurance:
+          type: boolean
+          description: >-
+            Ask the carrier to insure the shipment. Available only for stores with a warehouse in
+            Chile; `true` elsewhere is refused with `CARRIER_INSURANCE_NOT_AVAILABLE`.
+          default: false
+          example: false
+        is_cod:
+          type: boolean
+          description: Cash on delivery; the courier collects payment at the door.
+          default: false
+          example: false
+        cod_amount:
+          type: number
+          minimum: 0
+          description: >-
+            Amount the courier must collect when it differs from the order total (partial
+            collection). Omit, or send `0`, to collect the order total. A non-zero amount is available
+            only for stores with a warehouse in Chile; elsewhere it is refused with
+            `COD_AMOUNT_NOT_AVAILABLE`.
+          example: 30000
+        requires_document_return:
+          type: boolean
+          description: >-
+            Ask the carrier to bring back a signed document with the delivery. Available only for
+            stores with a warehouse in Chile; cannot be combined with `requires_pickup_on_delivery`.
+          default: false
+          example: false
+        requires_pickup_on_delivery:
+          type: boolean
+          description: >-
+            Include a prepaid return label inside the outbound package. Available only for consumer
+            (D2C) orders of stores with a warehouse in Chile, and cannot be combined with
+            `requires_document_return`.
+          default: false
+          example: false
+        shipping:
+          $ref: '#/components/schemas/OrderShippingAddress'
+        billing:
+          $ref: '#/components/schemas/OrderBillingAddress'
+        products:
+          type: array
+          minItems: 1
+          description: Lines of the order. The same SKU may appear more than once.
+          items:
+            $ref: '#/components/schemas/OrderProductLine'
+        shipping_documents:
+          type: array
+          description: >-
+            Optional PDF documents to print and include with the shipment (for example a label or
+            invoice you issued). Each document is fetched from a URL or decoded from base64 at
+            creation time.
+          items:
+            $ref: '#/components/schemas/OrderShippingDocument'
+
+    OrderShippingAddress:
+      type: object
+      description: Recipient and delivery address.
+      required: [first_name, phone, email, address1, country, city, province]
+      properties:
+        first_name:
+          type: string
+          description: Recipient first name.
+          example: "Jaime"
+        last_name:
+          type: string
+          description: Recipient last name.
+          example: "Carrera"
+        phone:
+          type: string
+          description: Recipient phone number, used by the carrier.
+          example: "5555555555"
+        email:
+          type: string
+          format: email
+          description: Recipient email, used for tracking notifications.
+          example: "buyer@example.com"
+        address1:
+          type: string
+          description: Street and number.
+          example: "Av. Reforma 123"
+        address2:
+          type: string
+          description: Additional address line (apartment, floor, building).
+          example: "Piso 4"
+        references:
+          type: string
+          description: Delivery hints for the courier.
+          example: "Blue door, ring twice"
+        number:
+          type: string
+          description: Street number, when kept separate from `address1`.
+          example: "123"
+        interior_number:
+          type: string
+          description: Interior or apartment number.
+          example: "4B"
+        country:
+          type: string
+          description: Country as an ISO 3166-1 alpha-2 code (a full country name is also recognised).
+          example: "MX"
+        city:
+          type: string
+          description: City.
+          example: "Ciudad de México"
+        province:
+          type: string
+          description: State or province.
+          example: "CDMX"
+        zip_code:
+          type: string
+          description: >-
+            Postal code. Required when the warehouse is in Mexico (`MISSING_ZIP_CODE` otherwise);
+            optional for Chile and Colombia. Used for carrier coverage.
+          example: "06600"
+
+    OrderBillingAddress:
+      type: object
+      description: Optional billing contact and address.
+      required: [first_name, last_name, phone, email, address1, country, city, province]
+      properties:
+        first_name:
+          type: string
+          description: Billing first name.
+          example: "Jaime"
+        last_name:
+          type: string
+          description: Billing last name.
+          example: "Carrera"
+        phone:
+          type: string
+          description: Billing phone number.
+          example: "5555555555"
+        email:
+          type: string
+          format: email
+          description: Billing email.
+          example: "buyer@example.com"
+        address1:
+          type: string
+          description: Street and number.
+          example: "Av. Reforma 123"
+        address2:
+          type: string
+          description: Additional address line.
+          example: "Piso 4"
+        address3:
+          type: string
+          description: Accepted for compatibility; not stored.
+          example: ""
+        interior_number:
+          type: string
+          description: Interior or apartment number.
+          example: "4B"
+        country:
+          type: string
+          description: Country as an ISO 3166-1 alpha-2 code.
+          example: "MX"
+        city:
+          type: string
+          description: City.
+          example: "Ciudad de México"
+        province:
+          type: string
+          description: State or province.
+          example: "CDMX"
+        zip_code:
+          type: string
+          description: Postal code.
+          example: "06600"
+
+    OrderProductLine:
+      type: object
+      required: [sku, quantity]
+      properties:
+        sku:
+          type: string
+          description: SKU of a product registered in the store.
+          example: "SKU-RED-M"
+        quantity:
+          type: integer
+          description: Units of this SKU. Lines of drop-shipping products are stored with quantity 0.
+          example: 2
+        unit_code:
+          type: string
+          description: >-
+            Pins the line to the one stock unit carrying this code. Only valid on a line with
+            `quantity` 1 of a non-kit product that tracks unit codes; mandatory for products that
+            hold personalized units.
+          example: "UC-0001"
+
+    OrderShippingDocument:
+      type: object
+      required: [document_type, data, printing_type]
+      properties:
+        document_type:
+          type: string
+          enum: [url, base64]
+          description: How `data` must be read. `file` is not accepted on creation.
+          example: "url"
+        data:
+          type: string
+          description: Public URL of the PDF, or the base64-encoded PDF content.
+          example: "https://example.com/documents/label.pdf"
+        printing_type:
+          type: string
+          enum: [label, document, difal_bill, difal_payment_receipt, identifier_label, oxxo_digital_card]
+          description: What the document is, which decides when the warehouse prints it.
+          example: "label"
+        metadata:
+          type: object
+          description: Free-form data stored with the document.
+          additionalProperties: true
+          example: {tracking_number: "TRACK123"}
+
+    OrderCreateError:
+      type: object
+      description: Error body of `POST /orders` and `POST /orders/create-and-ship`.
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable message.
+          example: "order with order_number ORD-0001 already exists with id 987654"
+        code:
+          type: [string, 'null']
+          description: >-
+            Machine-readable code. `null` for parameter errors, empty string for business errors
+            without a dedicated code; shipping-method lookups use the legacy codes `"404"` and
+            `"400"`.
+          example: "ORDER_ALREADY_EXISTS"
+        context:
+          type: [object, 'null']
+          description: Extra data for some codes, for example `{order_id}` on `ORDER_ALREADY_EXISTS`.
+          additionalProperties: true
+          example: {order_id: 987654}
+
+    DuplicateRequestInFlightError:
+      type: object
+      required: [error, code]
+      properties:
+        error:
+          type: string
+          description: Human-readable message naming the contended order number.
+          example: "another request for order ORD-0001 is already being processed, retry in 5 seconds"
+        code:
+          type: string
+          enum: [DUPLICATE_REQUEST_IN_FLIGHT]
+          description: Fixed code for this condition.
+          example: "DUPLICATE_REQUEST_IN_FLIGHT"
+        transaction_id:
+          type: [string, 'null']
+          description: Identifier of the request currently holding the lock; useful when contacting support.
+          example: "c0ffee00-0000-4000-8000-000000000001"
+        transaction_key:
+          type: [string, 'null']
+          description: The lock key that was contended.
+          example: "api_create_orders:1234:ORD-0001"
+
+    OrderFieldValidationError:
+      type: object
+      description: Field-level validation errors of an order.
+      required: [errors]
+      properties:
+        errors:
+          type: array
+          items:
+            type: object
+            required: [field, code]
+            properties:
+              field:
+                type: string
+                description: Order field the error refers to.
+                example: "shipping_method"
+              code:
+                type: string
+                description: Validation code, for example `NATIONAL_SHIPPING_METHOD_EXPECTED`, `MISSING_SHIPPING_FIELD`, `SHIPPING_METHOD_HAS_NO_COVERAGE`.
+                example: "NATIONAL_SHIPPING_METHOD_EXPECTED"
+              additional_info:
+                type: object
+                description: Extra details for the code, often empty.
+                additionalProperties: true
+                example: {}
+
+    OrderCreateAndShipRequest:
+      type: object
+      required: [store_id, order_number, shipping, packages]
+      properties:
+        store_id:
+          type: integer
+          description: Id of the store the order belongs to.
+          example: 1234
+        order_number:
+          type: string
+          description: Your identifier for the order. Must be unique within the store.
+          example: "PS-0001"
+        shipping_method_id:
+          type: integer
+          description: >-
+            Id of a Cubbo shipping method. Get it from `GET /shipping-methods/quote`: each option in the response has a
+            `shipping_method_id`. Exactly one of `shipping_method_id` or
+            `integration_shipping_method` must be sent. Coverage for the destination is validated
+            through the order validation (`errors` response).
+          example: 12
+        integration_shipping_method:
+          type: string
+          description: >-
+            Exact name of a shipping method you created in the Cubbo app, under **Integrations**, your
+            Open API integration, **Shipping Methods** (field **Integration Delivery Method**). It must match
+            character by character: the comparison is case-sensitive and does not trim spaces. Cubbo uses the
+            shipping configuration assigned to that method to pick the carrier. See
+            [Set up your integration](/guides/setup#3-configure-shipping-methods).
+            Exactly one of `shipping_method_id` or `integration_shipping_method` must be sent. There is
+            no fallback here: an unknown name returns 422 `MISSING_INTEGRATION_SHIPPING_METHOD`.
+          example: "Express"
+        shipping:
+          $ref: '#/components/schemas/CreateAndShipShippingAddress'
+        products:
+          type: array
+          description: Optional content description of the parcel; each SKU must exist in the store.
+          items:
+            $ref: '#/components/schemas/CreateAndShipProductLine'
+        packages:
+          type: array
+          minItems: 1
+          description: Physical packages to label; one label is generated per entry.
+          items:
+            $ref: '#/components/schemas/CreateAndShipPackage'
+
+    CreateAndShipShippingAddress:
+      type: object
+      description: Recipient and delivery address. Billing data is copied from this block.
+      required: [first_name, address1, country, city, province]
+      properties:
+        first_name:
+          type: string
+          minLength: 3
+          description: Recipient first name (at least 3 characters).
+          example: "Jaime"
+        last_name:
+          type: string
+          description: Recipient last name.
+          example: "Carrera"
+        phone:
+          type: string
+          description: Recipient phone number. Optional here, but most carriers require it (`MISSING_SHIPPING_FIELD` otherwise).
+          example: "5555555555"
+        email:
+          type: string
+          format: email
+          description: Recipient email.
+          example: "buyer@example.com"
+        address1:
+          type: string
+          minLength: 3
+          description: Street and number (at least 3 characters).
+          example: "Av. Reforma 123"
+        address2:
+          type: string
+          description: Additional address line.
+          example: "Piso 4"
+        interior_number:
+          type: string
+          description: Interior or apartment number.
+          example: "4B"
+        country:
+          type: string
+          minLength: 2
+          description: Country as an ISO 3166-1 alpha-2 code.
+          example: "MX"
+        city:
+          type: string
+          minLength: 2
+          description: City.
+          example: "Ciudad de México"
+        province:
+          type: string
+          minLength: 2
+          description: State or province.
+          example: "CDMX"
+        zip_code:
+          type: string
+          description: Postal code. Required when the warehouse is in Mexico (`MISSING_ZIP_CODE` otherwise).
+          example: "06600"
+
+    CreateAndShipProductLine:
+      type: object
+      required: [sku, quantity]
+      properties:
+        sku:
+          type: string
+          description: SKU of a product registered in the store.
+          example: "SKU-RED-M"
+        quantity:
+          type: integer
+          description: Units of this SKU in the parcel.
+          example: 1
+
+    CreateAndShipPackage:
+      type: object
+      required: [weight_kg, length_cm, width_cm, height_cm]
+      properties:
+        weight_kg:
+          type: number
+          minimum: 0.01
+          description: Real weight of the package in kilograms.
+          example: 1.2
+        length_cm:
+          type: number
+          minimum: 1
+          description: Length in centimetres.
+          example: 30
+        width_cm:
+          type: number
+          minimum: 1
+          description: Width in centimetres.
+          example: 20
+        height_cm:
+          type: number
+          minimum: 1
+          description: Height in centimetres.
+          example: 10
+
+    CreateAndShipLabel:
+      type: object
+      description: A shipping label generated by `POST /orders/create-and-ship`.
+      properties:
+        id:
+          type: integer
+          description: Shipping label id; use it with `GET /shipping-labels/{shipping_label_id}`.
+          example: 778899
+        order_id:
+          type: integer
+          description: Id of the order that was created.
+          example: 987655
+        billing_file:
+          oneOf:
+            - $ref: '#/components/schemas/LabelFile'
+            - type: 'null'
+          description: Carrier billing document when the carrier provides one; otherwise `null`.
+        shipping_number:
+          type: [string, 'null']
+          description: Carrier tracking number.
+          example: "1234567890"
+        label_file:
+          $ref: '#/components/schemas/LabelFile'
+        label_type:
+          type: string
+          description: Kind of label, normally `shipping`.
+          example: "shipping"
+        tracking_url:
+          type: [string, 'null']
+          description: Carrier tracking page.
+          example: "https://carrier.example.com/track/1234567890"
+        cubbo_tracking_url:
+          type: [string, 'null']
+          description: Cubbo tracking page for the order.
+          example: "https://tracking.cubbo.com/t/abc123"
+
+    LabelFile:
+      type: object
+      description: Downloadable file. An empty object when no file is attached.
+      properties:
+        path:
+          type: string
+          description: Path of the file relative to the API host.
+          example: "/rails/active_storage/blobs/redirect/abc123/label.pdf"
+        url:
+          type: string
+          format: uri
+          description: Absolute download URL.
+          example: "https://api.cubbo.com/rails/active_storage/blobs/redirect/abc123/label.pdf"
+        filename:
+          type: string
+          description: File name.
+          example: "label.pdf"
+        byte_size:
+          type: integer
+          description: Size in bytes.
+          example: 48213
+        content_type:
+          type: string
+          description: MIME type.
+          example: "application/pdf"
+
+    BrazilOrderCreateRequest:
+      type: object
+      description: >-
+        Request body of `POST /brazil/orders`. `shipping`, `billing`, `buyer_shipping_price` and a
+        shipping method are required for `SALE`/`DONATION` and ignored for removal types.
+      required: [store_id, order_number, products]
+      properties:
+        store_id:
+          type: integer
+          description: Id of the Brazil store the order belongs to.
+          example: 1234
+        order_number:
+          type: string
+          description: Your identifier for the order. Must be unique within the store.
+          example: "ORD-BR-0001"
+        order_type:
+          type: string
+          enum: [SALE, DONATION, REMOVE_STOCK, REMOVE_DAMAGED_STOCK, REMOVE_EXPIRED_STOCK, REMOVE_LOST_STOCK, STOCK_TRANSFER_OUT]
+          default: SALE
+          description: >-
+            Kind of order. `SALE` and `DONATION` ship to your customer; the `REMOVE_*` types return
+            stock to you. `STOCK_TRANSFER_OUT` passes the parameter check but is reserved for Cubbo's
+            stock-transfer feature; do not use it.
+          example: "SALE"
+        shipping_method_id:
+          type: integer
+          description: >-
+            Id of a Cubbo shipping method. Get it from `GET /shipping-methods/quote`: each option in the response has a
+            `shipping_method_id`. For `SALE`/`DONATION` one of
+            `shipping_method_id` or `shipping_line_code` is required; ignored for removal types.
+          example: 12
+        shipping_line_code:
+          type: string
+          description: >-
+            Exact name of a shipping method you created in the Cubbo app, under **Integrations**, your
+            Open API integration, **Shipping Methods** (field **Integration Delivery Method**). It must match
+            character by character: the comparison is case-sensitive and does not trim spaces. Cubbo uses the
+            shipping configuration assigned to that method to pick the carrier. See
+            [Set up your integration](/guides/setup#3-configure-shipping-methods).
+            Alternative to `shipping_method_id`. Ignored for removal types.
+          example: "Express"
+        is_paid:
+          type: boolean
+          description: Whether the order is already paid. Defaults to `true` when omitted.
+          default: true
+          example: true
+        is_b2b:
+          type: boolean
+          description: >-
+            Business-model classification, read only for stores enabled for both B2B and D2C; omit
+            for a consumer order.
+          example: false
+        buyer_shipping_price:
+          type: number
+          description: >-
+            Shipping cost charged to the buyer, added to the order total and to the NF-e. Required
+            for `SALE`/`DONATION` (send `0.0` when free); optional for removal types, where it
+            defaults to `0.0` but is still added to the total when sent.
+          example: 15.90
+        shipping:
+          $ref: '#/components/schemas/BrazilOrderShippingAddress'
+        billing:
+          $ref: '#/components/schemas/BrazilOrderBillingAddress'
+        products:
+          type: array
+          minItems: 1
+          description: Lines of the order.
+          items:
+            $ref: '#/components/schemas/BrazilOrderProductLine'
+        shipping_documents:
+          type: array
+          description: Optional PDF documents to print and include with the shipment.
+          items:
+            $ref: '#/components/schemas/OrderShippingDocument'
+        client_invoice:
+          description: >-
+            Removal types only. Register an NF-e you issued yourself by its numbers. Requires manual
+            NF-e entry to be enabled for your store by Cubbo support; otherwise the request is
+            refused with 422. Send either this or `invoice_xml`, not both.
+          $ref: '#/components/schemas/BrazilClientInvoice'
+        invoice_xml:
+          type: string
+          description: >-
+            Removal types only. Base64-encoded XML of the authorized NF-e you issued yourself.
+            Accepted for any Brazil removal order.
+          example: "PG5mZT48L25mZT4="
+
+    BrazilOrderShippingAddress:
+      type: object
+      description: Recipient and delivery address (required for `SALE`/`DONATION`).
+      required: [first_name, phone, email, address1, number, neighborhood, country, city, province, zip_code]
+      properties:
+        first_name:
+          type: string
+          description: Recipient first name.
+          example: "Ana"
+        last_name:
+          type: string
+          description: Recipient last name.
+          example: "Silva"
+        phone:
+          type: string
+          description: Recipient phone number.
+          example: "5511999999999"
+        email:
+          type: string
+          format: email
+          description: Recipient email.
+          example: "buyer@example.com"
+        address1:
+          type: string
+          description: Street name (logradouro).
+          example: "Av. Paulista"
+        address2:
+          type: string
+          description: Additional address line (complemento).
+          example: "Bloco B"
+        address3:
+          type: string
+          description: Accepted for compatibility; not stored.
+          example: ""
+        number:
+          type: string
+          description: Street number.
+          example: "1234"
+        interior_number:
+          type: string
+          description: Apartment or suite.
+          example: "Apto 45"
+        neighborhood:
+          type: string
+          description: Neighborhood (bairro).
+          example: "Bela Vista"
+        country:
+          type: string
+          description: Country as an ISO 3166-1 alpha-2 code.
+          example: "BR"
+        city:
+          type: string
+          description: City.
+          example: "São Paulo"
+        province:
+          type: string
+          description: State (UF), for example `SP`.
+          example: "SP"
+        zip_code:
+          type: string
+          description: CEP (postal code), digits only. Validated against the Correios database asynchronously.
+          example: "01310100"
+
+    BrazilOrderBillingAddress:
+      type: object
+      description: Fiscal data of the buyer, used to issue the NF-e (required for `SALE`/`DONATION`).
+      required: [first_name, last_name, phone, email, address1, number, neighborhood, country, city, province, zip_code, tax_id]
+      properties:
+        first_name:
+          type: string
+          description: Buyer first name.
+          example: "Ana"
+        last_name:
+          type: string
+          description: Buyer last name.
+          example: "Silva"
+        phone:
+          type: string
+          description: Buyer phone number.
+          example: "5511999999999"
+        email:
+          type: string
+          format: email
+          description: Buyer email.
+          example: "buyer@example.com"
+        address1:
+          type: string
+          description: Street name (logradouro).
+          example: "Av. Paulista"
+        address2:
+          type: string
+          description: Additional address line (complemento).
+          example: "Bloco B"
+        address3:
+          type: string
+          description: Accepted for compatibility; not stored.
+          example: ""
+        number:
+          type: string
+          description: Street number.
+          example: "1234"
+        interior_number:
+          type: string
+          description: Apartment or suite.
+          example: "Apto 45"
+        neighborhood:
+          type: string
+          description: Neighborhood (bairro).
+          example: "Bela Vista"
+        country:
+          type: string
+          description: Country as an ISO 3166-1 alpha-2 code.
+          example: "BR"
+        city:
+          type: string
+          description: City.
+          example: "São Paulo"
+        province:
+          type: string
+          description: State (UF).
+          example: "SP"
+        zip_code:
+          type: string
+          description: CEP (postal code).
+          example: "01310100"
+        tax_id:
+          type: string
+          description: >-
+            Buyer tax id: CPF (11 digits) when `tax_regime` is `PHYSICAL`, CNPJ (14 digits) when
+            `LEGAL`. Length is validated asynchronously (`BILLING_TAX_ID_WRONG_LENGTH`).
+          example: "000.000.000-00"
+        tax_regime:
+          type: string
+          enum: [PHYSICAL, LEGAL]
+          default: PHYSICAL
+          description: Natural person (`PHYSICAL`, CPF) or company (`LEGAL`, CNPJ).
+          example: "PHYSICAL"
+        company:
+          type: string
+          description: Company legal name. Required when `tax_regime` is `LEGAL`.
+          example: "Example Comércio LTDA"
+        state_registration:
+          type: string
+          description: State registration (Inscrição Estadual). Required when `tax_regime` is `LEGAL`.
+          example: "000000000"
+
+    BrazilOrderProductLine:
+      type: object
+      required: [sku, quantity]
+      properties:
+        sku:
+          type: string
+          description: SKU of a product registered in the store.
+          example: "SKU-RED-M"
+        quantity:
+          type: integer
+          description: Units of this SKU. Must be at least 1 for removal types.
+          example: 2
+        price_per_item:
+          type: number
+          minimum: 0
+          description: >-
+            Unit price that reaches the NF-e. Required for `SALE`/`DONATION`; optional for removal
+            types, where it falls back to the product's registered price. Use a nominal value rather
+            than `0` on a donation.
+          example: 59.90
+        discount_per_item:
+          type: number
+          minimum: 0
+          description: Unit discount. Must not exceed `price_per_item`, and requires `price_per_item` to be sent.
+          example: 5.00
+
+    BrazilClientInvoice:
+      type: object
+      required: [key, serie, number]
+      properties:
+        key:
+          type: string
+          pattern: '^[0-9]{44}$'
+          description: NF-e access key (chave de acesso), 44 digits.
+          example: "00000000000000000000000000000000000000000000"
+        serie:
+          type: string
+          description: NF-e series.
+          example: "1"
+        number:
+          type: string
+          description: NF-e number.
+          example: "987"
