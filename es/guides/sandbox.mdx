@@ -1,6 +1,6 @@
 ---
 title: "Probar tu integración"
-description: "Completa reabastecimientos, envía órdenes y cambia su rastreo en tu tienda de pruebas, con los webhooks reales."
+description: "Completa reabastecimientos, envía órdenes, cambia su rastreo y recibe devoluciones en tu tienda de pruebas, con los webhooks reales."
 ---
 
 En producción, el almacén recibe tus reabastecimientos y envía tus órdenes, y la paquetería reporta el rastreo. En
@@ -79,6 +79,18 @@ Las llamadas con credenciales de producción responden `403` con el código `NOT
     `{ "status": "shipment_with_incident", "incident_description": "not_at_home" }`. Termina con
     `shipment_delivered`.
   </Step>
+  <Step title="Recibe una devolución">
+    Crea una devolución de la orden enviada con `POST /returns` y `"return_type": "SIMPLE_RETURN"`, y deja que el
+    almacén la reciba.
+
+    ```bash
+    curl -X POST https://api.cubbo.com/v1/sandbox/returns/4321/receive \
+      -H "Authorization: Bearer <token>"
+    ```
+
+    Recibes `orderUpdated` para `returned`, `replenishmentStatus` para `COMPLETED` e `inventoryMovement`. La orden
+    termina en `reentered` y la devolución en `REENTERED`.
+  </Step>
 </Steps>
 
 ## Qué hace cada endpoint
@@ -88,6 +100,7 @@ Las llamadas con credenciales de producción responden `403` con el código `NOT
 | `POST /sandbox/replenishments/{replenishment_id}/complete` | El almacén recibe y acomoda cada unidad declarada. | `replenishmentStatus` (3), `inventoryMovement` |
 | `POST /sandbox/orders/{order_id}/ship` | El almacén surte, empaca y envía la orden. | `orderUpdated` (3), `orderFulfilled` |
 | `POST /sandbox/orders/{order_id}/tracking` | La paquetería reporta un evento de rastreo. | `shippingUpdated` |
+| `POST /sandbox/returns/{return_id}/receive` | El almacén recibe una devolución y regresa las unidades al stock. | `orderUpdated`, `replenishmentStatus`, `inventoryMovement` |
 
 Estatus de rastreo que puedes enviar: `shipment_collected`, `shipment_in_transit`, `shipment_out_for_delivery`,
 `shipment_with_incident` y `shipment_delivered`. Descripciones de incidencia: `not_at_home`, `missing_references`,
@@ -104,6 +117,8 @@ Estatus de rastreo que puedes enviar: `shipment_collected`, `shipment_in_transit
   que ya esperaban toman el stock nuevo con el procesamiento regular de backorders de Cubbo, que puede tardar unos
   minutos.
 - No se contacta a ninguna paquetería, y las órdenes enviadas por el sandbox dejan `shipping_date` vacío.
+- Solo se pueden recibir devoluciones `SIMPLE_RETURN` de órdenes enviadas por el sandbox. Cada unidad declarada
+  regresa en buen estado. Los cambios (exchanges) no son compatibles.
 - `shipment_delivered` es final para el sandbox.
 - No se generan cobros, facturas ni notificaciones al cliente final.
 

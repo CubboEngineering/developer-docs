@@ -1,6 +1,6 @@
 ---
 title: "Test your integration"
-description: "Complete replenishments, ship orders and change their tracking in your test store, with the real webhooks."
+description: "Complete replenishments, ship orders, change their tracking and receive returns in your test store, with the real webhooks."
 ---
 
 In production, the warehouse receives your replenishments and ships your orders, and the carrier reports the
@@ -79,6 +79,18 @@ production credentials answer `403` with code `NOT_A_TEST_STORE`.
     `{ "status": "shipment_with_incident", "incident_description": "not_at_home" }`. Finish with
     `shipment_delivered`.
   </Step>
+  <Step title="Receive a return">
+    Create a return for the shipped order with `POST /returns` and `"return_type": "SIMPLE_RETURN"`, then let the
+    warehouse receive it.
+
+    ```bash
+    curl -X POST https://api.cubbo.com/v1/sandbox/returns/4321/receive \
+      -H "Authorization: Bearer <token>"
+    ```
+
+    You receive `orderUpdated` for `returned`, `replenishmentStatus` for `COMPLETED` and `inventoryMovement`. The
+    order ends in `reentered` and the return in `REENTERED`.
+  </Step>
 </Steps>
 
 ## What each endpoint does
@@ -88,6 +100,7 @@ production credentials answer `403` with code `NOT_A_TEST_STORE`.
 | `POST /sandbox/replenishments/{replenishment_id}/complete` | The warehouse receives and puts away every declared unit. | `replenishmentStatus` (3), `inventoryMovement` |
 | `POST /sandbox/orders/{order_id}/ship` | The warehouse picks, packs and ships the order. | `orderUpdated` (3), `orderFulfilled` |
 | `POST /sandbox/orders/{order_id}/tracking` | The carrier reports a tracking event. | `shippingUpdated` |
+| `POST /sandbox/returns/{return_id}/receive` | The warehouse receives a return and puts the units back in stock. | `orderUpdated`, `replenishmentStatus`, `inventoryMovement` |
 
 Tracking statuses you can send: `shipment_collected`, `shipment_in_transit`, `shipment_out_for_delivery`,
 `shipment_with_incident` and `shipment_delivered`. Incident descriptions: `not_at_home`, `missing_references`,
@@ -103,6 +116,8 @@ Tracking statuses you can send: `shipment_collected`, `shipment_in_transit`, `sh
 - An order in `backorder` cannot be shipped. Complete a replenishment with its products first. Orders that were
   already waiting pick up the new stock through Cubbo's regular backorder processing, which can take a few minutes.
 - No carrier is contacted, and orders shipped through the sandbox keep `shipping_date` empty.
+- Only `SIMPLE_RETURN` returns of orders shipped through the sandbox can be received. Every declared unit comes
+  back in good condition. Exchanges are not supported.
 - `shipment_delivered` is final for the sandbox.
 - No charges, invoices or customer notifications are generated.
 

@@ -270,6 +270,90 @@ paths:
         '429': {$ref: '#/components/responses/TooManyRequests'}
         '500': {$ref: '#/components/responses/SandboxUnexpectedError'}
 
+  /sandbox/returns/{return_id}/receive:
+    post:
+      tags: [Sandbox]
+      operationId: sandboxReceiveReturn
+      summary: Receive a return
+      description: |
+        Simulates the warehouse receiving a return and putting the units back in stock. Use it after
+        `POST /returns` to test how your system handles a customer return.
+
+        The return moves through `ARRIVED_AT_WAREHOUSE` and `RECEIVED` to `REENTERED`, and the order
+        through `return_arrived` and `returned` to `reentered`, as in a real return. You receive an
+        `orderUpdated` event when the order becomes `returned`, a `replenishmentStatus` event when the
+        return's stock re-entry completes, and an `inventoryMovement` event for the returned products.
+        As in production, no `orderUpdated` event is sent for `return_arrived` or `reentered`; read the
+        final status with `GET /returns/{return_id}`.
+
+        - Works only for test stores, and only for returns of orders shipped with
+          `POST /sandbox/orders/{order_id}/ship`.
+        - The return must be a `SIMPLE_RETURN` in status `REQUESTED` (create it with `return_type`
+          `SIMPLE_RETURN`) or `ARRIVED_AT_WAREHOUSE`. Exchanges are not supported.
+        - Every unit the return declared comes back in good condition. A return without products
+          brings back the whole order.
+        - No fiscal documents, charges or emails are generated.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: return_id
+          in: path
+          required: true
+          description: ID of the return, as returned by `POST /returns`.
+          schema: {type: integer, example: 4321}
+      responses:
+        '200':
+          description: The return was received and its units are back in stock.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SandboxReturn'}
+              example:
+                id: 4321
+                status: REENTERED
+                order: {id: 987654, order_number: ORD-0001, status: reentered}
+                replenishment_id: 55002
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/SandboxForbidden'}
+        '404': {$ref: '#/components/responses/SandboxNotFound'}
+        '409':
+          description: The return cannot be received in its current state, or another request is updating it.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SandboxError'}
+              examples:
+                notShipped:
+                  summary: Order not shipped through the sandbox
+                  value:
+                    error: {message: "Only returns of orders shipped through the sandbox can be received through the sandbox.", code: ORDER_NOT_SHIPPED_BY_SANDBOX}
+                invalidStatus:
+                  summary: Already received or not requested
+                  value:
+                    error: {message: "This return is in status REENTERED and cannot be received.", code: INVALID_RETURN_STATUS}
+                receptionUnavailable:
+                  summary: No reception area free
+                  value:
+                    error: {message: "No reception area is free right now. Try again in a few minutes.", code: RECEPTION_UNAVAILABLE}
+        '422':
+          description: The return is not supported by the sandbox, or the sandbox is not set up for your test store.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SandboxError'}
+              examples:
+                unsupportedType:
+                  summary: Not a simple return
+                  value:
+                    error: {message: "Only SIMPLE_RETURN returns can be received through the sandbox.", code: RETURN_TYPE_NOT_SUPPORTED}
+                empty:
+                  summary: No products
+                  value:
+                    error: {message: "This return has no products to receive.", code: EMPTY_RETURN}
+                notConfigured:
+                  summary: Sandbox not set up
+                  value:
+                    error: {message: "The sandbox is not set up for this test store yet. Contact your Cubbo account manager.", code: SANDBOX_NOT_CONFIGURED}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/SandboxUnexpectedError'}
+
 components:
   parameters:
     SandboxOrderId:
@@ -320,6 +404,9 @@ components:
                 - ORDER_NOT_SHIPPED_BY_SANDBOX
                 - ORDER_ALREADY_DELIVERED
                 - SAME_TRACKING_STATUS
+                - RETURN_TYPE_NOT_SUPPORTED
+                - INVALID_RETURN_STATUS
+                - EMPTY_RETURN
     SandboxReplenishment:
       type: object
       properties:
@@ -340,6 +427,18 @@ components:
           enum: [null, shipment_collected, shipment_in_transit, shipment_out_for_delivery, shipment_with_incident, shipment_delivered]
         tracking_number: {type: string, description: Test tracking number. Always starts with `SANDBOX-`.}
         carrier_name: {type: string, description: Carrier of the order's shipping method.}
+    SandboxReturn:
+      type: object
+      properties:
+        id: {type: integer, description: Return ID.}
+        status: {type: string, description: Always `REENTERED` on success., example: REENTERED}
+        order:
+          type: object
+          properties:
+            id: {type: integer}
+            order_number: {type: string}
+            status: {type: string, example: reentered}
+        replenishment_id: {type: integer, description: ID of the replenishment that put the returned units back in stock.}
     SandboxTrackingRequest:
       type: object
       required: [status]
