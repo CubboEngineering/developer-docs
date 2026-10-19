@@ -1,0 +1,111 @@
+openapi: 3.1.0
+info:
+  title: Cubbo Clients API
+  version: "1.0"
+  summary: Orders, inventory, replenishments, returns, shipping and webhooks for Cubbo fulfillment.
+  description: |
+    The Cubbo Clients API connects your store, ERP or marketplace with Cubbo's fulfillment network.
+    All endpoints except `POST /auth/token` require a bearer token; see the Authentication guide.
+    Request and response bodies are JSON. Errors are JSON objects with an `error` key.
+  contact:
+    name: Cubbo integrations
+    email: integraciones@cubbo.com
+servers:
+  - url: https://api.cubbo.com/v1
+    description: Production
+security:
+  - bearerAuth: []
+tags:
+  - name: Authentication
+    description: Exchange client credentials for a bearer token.
+  - name: Orders
+    description: Create, update, hold, cancel and read sales orders.
+  - name: Shipping labels
+    description: Read the shipping labels generated for an order.
+  - name: Inventory
+    description: Products and stock per store.
+  - name: Lots
+    description: Lot-level inventory for products with expiration or batch tracking.
+  - name: Reports
+    description: Bulk reports for reconciliation.
+  - name: Replenishments
+    description: Inbound shipments to the warehouse.
+  - name: Returns
+    description: Returns and exchanges.
+  - name: Stores
+    description: Store provisioning and settings.
+  - name: Shipping methods
+    description: Available shipping methods, coverage and quotes.
+  - name: Click and collect
+    description: Pickup points and in-store pickup orders.
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "Token returned by `POST /auth/token`, sent as `Authorization: Bearer <token>`."
+  schemas:
+    Error:
+      type: object
+      description: Error body returned by every failed request.
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable description of the failure. For `401` responses it is always `Unauthorized`.
+          example: Parameter store_id is required
+        message:
+          type: string
+          description: Present on `401` responses only; the reason the request was rejected.
+          example: invalid token
+        code:
+          type: [string, 'null']
+          description: Stable machine-readable code, present on some order, return and replenishment errors.
+          example: ORDER_ALREADY_EXISTS
+        context:
+          type: [object, 'null']
+          description: Extra data about the failure when available, for example the id of the conflicting order.
+          additionalProperties: true
+          example: {order_id: 987654}
+    PaginationMeta:
+      type: object
+      description: Paging information returned next to list results.
+      properties:
+        current_page: {type: integer, example: 1}
+        next_page: {type: [integer, 'null'], example: 2}
+        prev_page: {type: [integer, 'null'], example: null}
+        total_pages: {type: integer, example: 7}
+        first_page: {type: boolean, example: true}
+        last_page: {type: boolean, example: false}
+        per_page: {type: integer, example: 50}
+        total_count: {type: integer, example: 312}
+  responses:
+    Unauthorized:
+      description: Missing or invalid token, wrong credentials, or no access to the requested store.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          examples:
+            invalidToken:
+              value: {error: Unauthorized, message: invalid token}
+            noHeader:
+              value: {error: Unauthorized, message: no authorization header found}
+            storeNotAllowed:
+              value: {error: Unauthorized, message: not allowed to show? this Store}
+    TooManyRequests:
+      description: Rate limit exceeded. Wait for the number of seconds in `Retry-After`.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema: {type: integer, example: 60}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {error: Too many requests. Please slow down and try again later.}
+    InternalServerError:
+      description: Unexpected error. Retry with backoff; if it persists, send the timestamp to Cubbo support.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {error: "unexpected error, timestamp: 1760000000"}

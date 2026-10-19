@@ -1,0 +1,2118 @@
+paths:
+  /inventory:
+    get:
+      tags: [Inventory]
+      operationId: listInventory
+      summary: List products with stock
+      description: |
+        Returns the catalog of one store with the current stock of every product. Each product
+        carries an aggregate `stock` breakdown (available, reserved, damaged, lost, expired, on hold,
+        sell-ahead buckets, and per-source splits of damaged and lost units), an optional per-unit
+        `units` detail and an optional per-lot `lots` detail. Use it to sync your catalog and stock
+        levels; use `GET /lots` when you need one product's lots filtered or paginated.
+        - Results are paginated and ordered by product creation date, newest first. Default page size is 10, maximum 200.
+        - Pass `skus[]` to restrict the page to products that carry any of the given SKUs (exact match on the SKU).
+        - `units` is present only when the product has something to report: unit-code (IMEI/serial) products list every active, reserved, damaged and lost unit with its unit code; other products list only their damaged and lost units, without a unit code.
+        - `lots` is present only on products that have at least one lot. Lots are listed in creation order, not by expiration date.
+        - `kit_childs` lists the components of a kit (bundle) with their quantity and the component product's id, name and SKUs. It is an empty array for non-kit products.
+        - The response is read from a replica, so very recent movements can lag a few seconds.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: store_id
+          in: query
+          required: true
+          description: Store whose inventory you want. Your token must have access to this store.
+          schema: {type: integer}
+          example: 1234
+        - name: skus[]
+          in: query
+          required: false
+          description: Only return products that carry one of these SKUs (exact match). Repeat the parameter for several SKUs. Omit to return the whole catalog.
+          schema:
+            type: array
+            items: {type: string}
+          style: form
+          explode: true
+          example: ["SKU-RED-M", "SKU-RED-L"]
+        - name: page
+          in: query
+          required: false
+          description: Page number, starting at 1.
+          schema: {type: integer, default: 1}
+          example: 1
+        - name: per_page
+          in: query
+          required: false
+          description: Products per page. Maximum 200.
+          schema: {type: integer, default: 10, maximum: 200}
+          example: 50
+      responses:
+        '200':
+          description: One page of products with their stock.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InventoryResponse'}
+              example:
+                products:
+                  - id: 12345
+                    name: Widget Pro Black
+                    billing_name: Widget Pro - Black Edition
+                    description: "<p>A professional-grade widget.</p>"
+                    has_imei: false
+                    is_fragile: false
+                    is_kit: false
+                    bar_code: "7501234567890"
+                    is_dropshipping: false
+                    has_expiration: true
+                    freshness: 180
+                    is_scannable: true
+                    price: "99.99"
+                    weight: 2.5
+                    weight_unit: kg
+                    length: "10.0"
+                    width: "8.0"
+                    height: "5.0"
+                    dimension_unit: cm
+                    stock:
+                      IN_WAREHOUSE: 250
+                      AVAILABLE: 188
+                      AVAILABLE_NOT_EXTERNALLY_CONFIRMED: 0
+                      AVAILABLE_EXTERNALLY_CONFIRMED: 188
+                      UNAVAILABLE: 22
+                      RECEPTION-INCOMING-SELL-AHEAD: 0
+                      INCOMING-SELL-AHEAD: 0
+                      RESERVED-RECEPTION-INCOMING-SELL-AHEAD: 0
+                      RESERVED-INCOMING-SELL-AHEAD: 0
+                      DAMAGED: 2
+                      RECEPTION: 0
+                      OUT_OF_STOCK: 0
+                      RESERVED: 40
+                      RESERVED_BY_ORDERS: 40
+                      RESERVED_BY_RETURNS: 0
+                      ACTIVE: 188
+                      RESERVED-WITHOUT-SELL-AHEAD: 40
+                      EXPIRED: 20
+                      HOLDED: 20
+                      BUFFER_STOCK: 0
+                      LOST: 1
+                      DAMAGED_BY_SOURCE: {STORAGE: 2}
+                      LOST_BY_SOURCE: {RETURN: 1}
+                    units:
+                      - {status: DAMAGED, damaged_source: STORAGE}
+                      - {status: DAMAGED, damaged_source: STORAGE}
+                      - {status: LOST, lost_source: RETURN}
+                    lots:
+                      - unique_code: SKU-RED-M-L2026-04
+                        expiration_date: "2026-12-31"
+                        status: ACTIVE
+                        quantities: {ACTIVE: 120, RESERVED: 30, DAMAGED: 2}
+                      - unique_code: SKU-RED-M-L2026-02
+                        expiration_date: "2026-06-30"
+                        status: HOLDED
+                        quantities: {HOLDED: 20}
+                    store: {id: 1234, name: Example Store}
+                    product_codes:
+                      - {id: 9001, sku: SKU-RED-M}
+                    kit_childs: []
+                  - id: 33000
+                    name: Starter Bundle
+                    billing_name: null
+                    description: null
+                    has_imei: false
+                    is_fragile: false
+                    is_kit: true
+                    bar_code: "7508888888888"
+                    is_dropshipping: false
+                    has_expiration: false
+                    freshness: null
+                    is_scannable: true
+                    price: "149.00"
+                    weight: null
+                    weight_unit: null
+                    length: null
+                    width: null
+                    height: null
+                    dimension_unit: cm
+                    stock:
+                      IN_WAREHOUSE: 0
+                      AVAILABLE: 10
+                      AVAILABLE_NOT_EXTERNALLY_CONFIRMED: 0
+                      AVAILABLE_EXTERNALLY_CONFIRMED: 10
+                      UNAVAILABLE: 0
+                      RECEPTION-INCOMING-SELL-AHEAD: 0
+                      INCOMING-SELL-AHEAD: 0
+                      RESERVED-RECEPTION-INCOMING-SELL-AHEAD: 0
+                      RESERVED-INCOMING-SELL-AHEAD: 0
+                      DAMAGED: 0
+                      RECEPTION: 0
+                      OUT_OF_STOCK: 0
+                      RESERVED: 0
+                      RESERVED_BY_ORDERS: 0
+                      RESERVED_BY_RETURNS: 0
+                      ACTIVE: 10
+                      RESERVED-WITHOUT-SELL-AHEAD: 0
+                      EXPIRED: 0
+                      HOLDED: 0
+                      BUFFER_STOCK: 0
+                      LOST: 0
+                      DAMAGED_BY_SOURCE: {}
+                      LOST_BY_SOURCE: {}
+                    store: {id: 1234, name: Example Store}
+                    product_codes:
+                      - {id: 9300, sku: SKU-BUNDLE-01}
+                    kit_childs:
+                      - id: 501
+                        quantity: 2
+                        price_per_item: "49.50"
+                        kit_product:
+                          id: 12345
+                          name: Widget Pro Black
+                          product_codes:
+                            - {id: 9001, sku: SKU-RED-M}
+                meta:
+                  current_page: 1
+                  next_page: 2
+                  prev_page: null
+                  total_pages: 12
+                  first_page: true
+                  last_page: false
+                  per_page: 10
+                  total_count: 118
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: Invalid parameters.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              examples:
+                missingStoreId: {value: {error: "Parameter store_id is required"}}
+                perPageTooLarge: {value: {error: "Parameter per_page cannot be greater than 200"}}
+                pageNotInteger: {value: {error: "'abc' is not a valid Integer"}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /products:
+    post:
+      tags: [Inventory]
+      operationId: createProduct
+      summary: Create a product
+      description: |
+        Creates a product in a store, with its SKUs, barcode (UPC/EAN), logistics data (weight and
+        dimensions) and fiscal data. Send a single product (`skus` + `upc`) or a product with
+        variants (`has_variants: true` + `variants[]`), which creates one product per variant.
+        - **Barcode and SKU rules.** Both the barcode (`upc`) and every SKU must be unique within the store, and a barcode may not reuse a value already registered as a SKU of another product (or the other way round). The request is rejected with 422 when any of them is already taken. SKUs are trimmed of surrounding whitespace.
+        - **Weight.** `weight` is stored in kilograms. Send `weight_unit: "g"` (or `"gr"`) to send grams; the value is converted to kg and the stored unit becomes `kg`. Any other unit is stored as sent, without conversion.
+        - **Dimensions.** `length`, `width` and `height` must be between 0.01 and 999999.99; `dimension_unit` defaults to `cm`.
+        - **Dropshipping.** `is_dropshipping: true` marks a product that Cubbo does not stock. It cannot be combined with `has_variants`.
+        - **Non-scannable (marketing) products.** `is_scannable: false` requires a `product_image` and cannot be combined with `has_variants`.
+        - **Expiration.** When `has_expiration` is true you must also send `freshness` (minimum shelf-life in days required at receiving), or the product fails validation.
+        - **Kits (bundles).** This endpoint does not create kits: the created product always has `is_kit: false`. Kits are configured from the Cubbo app; their components are returned by `GET /inventory` as `kit_childs`.
+        - **Fiscal data (Brazil).** `tax_code` is the product's NCM code (Brazilian fiscal classification) or the id of an NCM configuration already registered in the store; an NCM that is not configured for the store is rejected. `origin`, `extipi` and `fci_key` feed the NF-e (Brazilian electronic invoice).
+        - **Variants.** Each variant becomes an independent product named `"<name> <variant name>"`, with its own `skus` and `bar_code`. The response is then an array of products in the full product format instead of a single product.
+        - **Concurrency.** Two simultaneous requests for the same SKUs in the same store are de-duplicated: the second receives `202 Accepted` while the first is still processing.
+        - **Integration accounts.** For API users linked to certain marketplace integrations the endpoint behaves as an upsert by barcode: an existing barcode gets the new SKU added (or its name and weight updated when the SKU already exists), `has_expiration` is forced to true with a default `freshness` of 180 days, `master_box_quantity` registers the units per master box for the SKU, and a SKU that already belongs to another product can be migrated to the new product when `migrate_sku` is true or the store has automatic SKU migration enabled. Variants are not supported for these accounts, and `weight_unit` is required.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProductCreateRequest'}
+            examples:
+              singleProduct:
+                summary: Single product with logistics and fiscal data
+                value:
+                  store_id: 1234
+                  name: Widget Pro Black
+                  description: "<p>A professional-grade widget.</p>"
+                  skus: [SKU-RED-M]
+                  upc: "7501234567890"
+                  price: 99.99
+                  weight: 500
+                  weight_unit: g
+                  length: 10
+                  width: 8
+                  height: 5
+                  dimension_unit: cm
+                  is_fragile: false
+                  has_expiration: true
+                  freshness: 180
+                  tax_code: "3401.11.90"
+                  origin: NATIONAL
+              dropshipping:
+                summary: Dropshipping product
+                value:
+                  store_id: 1234
+                  name: Printed Poster
+                  skus: [SKU-POSTER-01]
+                  upc: "7501234567891"
+                  is_dropshipping: true
+                  weight: 0.2
+                  weight_unit: kg
+              withVariants:
+                summary: Product with size variants
+                value:
+                  store_id: 1234
+                  name: Widget Tee
+                  description: Cotton tee
+                  has_variants: true
+                  weight: 0.3
+                  weight_unit: kg
+                  options:
+                    - {name: Size, tags: [S, M]}
+                  variants:
+                    - name: S
+                      skus: [SKU-TEE-S]
+                      bar_code: "7501234567892"
+                      options_name: [{name: Size, value: S}]
+                    - name: M
+                      skus: [SKU-TEE-M]
+                      bar_code: "7501234567893"
+                      options_name: [{name: Size, value: M}]
+              nonScannableWithImage:
+                summary: Non-scannable product with an inline image
+                value:
+                  store_id: 1234
+                  name: Thank-you card
+                  skus: [SKU-CARD-01]
+                  upc: "CARD-01"
+                  is_scannable: false
+                  product_image:
+                    filename: card.png
+                    base64_data: iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==
+                    content_type: image/png
+      responses:
+        '201':
+          description: Product created. A single product returns one object; a `has_variants` request returns an array with one full product per variant.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ProductCreated'
+                  - type: array
+                    items: {$ref: '#/components/schemas/ProductDetailed'}
+              examples:
+                singleProduct:
+                  value:
+                    id: 12345
+                    name: Widget Pro Black
+                    billing_name: null
+                    description: "<p>A professional-grade widget.</p>"
+                    has_imei: false
+                    is_fragile: false
+                    is_kit: false
+                    bar_code: "7501234567890"
+                    is_dropshipping: false
+                    has_expiration: true
+                    freshness: 180
+                    is_scannable: true
+                    price: "99.99"
+                    weight: 0.5
+                    product_codes:
+                      - {id: 9001, sku: SKU-RED-M}
+                withVariants:
+                  value:
+                    - id: 12346
+                      name: Widget Tee S
+                      billing_name: null
+                      description: Cotton tee
+                      has_imei: false
+                      requires_unit_code: false
+                      allow_unit_code_substitution: false
+                      personalized_units: false
+                      is_fragile: false
+                      is_kit: false
+                      bar_code: "7501234567892"
+                      is_dropshipping: false
+                      has_expiration: false
+                      freshness: null
+                      stock: null
+                      full_name: Widget Tee S
+                      is_scannable: true
+                      product_image_path: null
+                      price: "0.0"
+                      weight: 0.3
+                      weight_unit: kg
+                      origin: NATIONAL
+                      buffer_stock: null
+                      is_packageless: false
+                      length: null
+                      width: null
+                      height: null
+                      dimension_unit: cm
+                      is_discarded: false
+                      product_codes:
+                        - {id: 9002, product_id: 12346, sku: SKU-TEE-S, created_at: "2026-10-12T15:04:05.000Z", updated_at: "2026-10-12T15:04:05.000Z"}
+                      kit_childs: []
+                      store: {id: 1234, name: Example Store}
+                      ncm_configuration: null
+        '202':
+          description: Another request for the same SKUs in this store is still being processed. Retry later and check the catalog before re-sending.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AcceptedProcessing'}
+              example:
+                message: "Accepted, but PRODUCT whit skus SKU-RED-M still processing."
+                transaction_id: 7f3c2a1e-0000-4000-8000-000000000000
+                transaction_key: api_create_products-SKU-RED-M-1234
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: Validation or business error.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              examples:
+                missingParam: {value: {error: "Parameter name is required"}}
+                missingSkus: {value: {error: "Parameter skus is required"}}
+                missingUpc: {value: {error: "Parameter upc is required"}}
+                invalidBoolean: {value: {error: "'maybe' is not a valid boolean"}}
+                dimensionOutOfRange: {value: {error: "Parameter length cannot be less than 0.01"}}
+                dimensionUnit: {value: {error: "Parameter dimension_unit must be within [\"cm\", \"mm\", \"in\", \"m\"]"}}
+                skuOrUpcExists: {value: {error: "A product with provided sku or upc already exists for this store (SKU-RED-M,7501234567890)"}}
+                upcTaken: {value: {error: "Validation failed: Bar code upc 7501234567890 is already taken for this store."}}
+                freshnessRequired: {value: {error: "Validation failed: Freshness Freshness must be setted for expirable products."}}
+                ncmNotConfigured: {value: {error: "NCM 34011190 not configured for this store"}}
+                nonScannableNeedsImage: {value: {error: "Non-scannable products must have an image."}}
+                nonScannableWithVariants: {value: {error: "Non-scannable products cannot have variants."}}
+                dropshippingWithVariants: {value: {error: "Variant products cannot be created as dropshipping."}}
+                variantsEmpty: {value: {error: "Parameter variants cannot be blank"}}
+                variantSkuExists: {value: {error: "Products [12345] with same Sku SKU-TEE-S"}}
+                variantBarCodeExists: {value: {error: "Products [12345] with same bar code 7501234567892"}}
+                variantSkuEmpty: {value: {error: "Sku is empty"}}
+                imageTooLarge: {value: {error: "product_image.base64_data exceeds maximum allowed size (10485760 bytes)."}}
+                variantsNotSupportedForIntegration: {value: {error: "Variant products are not supported for the natura integration."}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /products/{id}:
+    patch:
+      tags: [Inventory]
+      operationId: updateProduct
+      summary: Update a product
+      description: |
+        Updates the editable fields of one product: name, description, price, image, barcode, SKUs,
+        weight and dimensions. Only the fields you send are changed; everything else is kept.
+        - **SKU and barcode changes are blocked once the product has stock** in the warehouse (any unit, in any status). The whole request is rejected with 422 in that case, even if it also carries other fields.
+        - `skus` **replaces** the product's full SKU list: existing SKUs are removed and the ones you send are added. An empty array is treated as "no change". The new SKUs must not be in use by another product of the store.
+        - `bar_code` must be unique in the store and must not match a SKU of another product.
+        - `weight` is stored in kilograms; send `weight_unit: "g"` (or `"gr"`) to send grams and have the value converted. `weight` must be greater than 0.
+        - `length`, `width` and `height` must be between 0.01 and 999999.99.
+        - Concurrent updates of the same product are serialized; a second simultaneous update receives `202 Accepted`.
+        - The response is the full product in the same format the Cubbo app uses (see `ProductDetailed`).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Cubbo product id, as returned by `GET /inventory` or `POST /products`.
+          schema: {type: integer}
+          example: 12345
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProductUpdateRequest'}
+            examples:
+              rename:
+                value: {name: Widget Pro Black v2, description: "<p>Updated description.</p>", price: 109.99}
+              logistics:
+                value: {weight: 750, weight_unit: g, length: 12.5, width: 7, height: 3, dimension_unit: cm}
+              replaceSkus:
+                value: {skus: [SKU-RED-M, SKU-RED-M-ALT], bar_code: "7501234567899"}
+      responses:
+        '200':
+          description: Product updated.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ProductDetailed'}
+              example:
+                id: 12345
+                name: Widget Pro Black v2
+                billing_name: null
+                description: "<p>Updated description.</p>"
+                has_imei: false
+                requires_unit_code: false
+                allow_unit_code_substitution: false
+                personalized_units: false
+                is_fragile: false
+                is_kit: false
+                bar_code: "7501234567890"
+                is_dropshipping: false
+                has_expiration: true
+                freshness: 180
+                stock:
+                  IN_WAREHOUSE: 250
+                  AVAILABLE: 188
+                  AVAILABLE_NOT_EXTERNALLY_CONFIRMED: 0
+                  AVAILABLE_EXTERNALLY_CONFIRMED: 188
+                  UNAVAILABLE: 22
+                  RECEPTION-INCOMING-SELL-AHEAD: 0
+                  INCOMING-SELL-AHEAD: 0
+                  RESERVED-RECEPTION-INCOMING-SELL-AHEAD: 0
+                  RESERVED-INCOMING-SELL-AHEAD: 0
+                  DAMAGED: 2
+                  RECEPTION: 0
+                  OUT_OF_STOCK: 0
+                  RESERVED: 40
+                  RESERVED_BY_ORDERS: 40
+                  RESERVED_BY_RETURNS: 0
+                  ACTIVE: 188
+                  RESERVED-WITHOUT-SELL-AHEAD: 40
+                  EXPIRED: 20
+                  HOLDED: 20
+                  BUFFER_STOCK: 0
+                full_name: Widget Pro Black v2
+                is_scannable: true
+                product_image_path: null
+                price: "109.99"
+                weight: 0.75
+                weight_unit: kg
+                origin: NATIONAL
+                buffer_stock: null
+                is_packageless: false
+                length: "12.5"
+                width: "7.0"
+                height: "3.0"
+                dimension_unit: cm
+                is_discarded: false
+                product_codes:
+                  - {id: 9001, product_id: 12345, sku: SKU-RED-M, created_at: "2026-10-12T15:04:05.000Z", updated_at: "2026-10-12T15:04:05.000Z"}
+                kit_childs: []
+                store: {id: 1234, name: Example Store}
+                ncm_configuration: null
+        '202':
+          description: Another update of this product is still being processed. Retry later.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AcceptedProcessing'}
+              example:
+                message: "Accepted, another update for product 12345 is still processing."
+                transaction_id: 7f3c2a1e-0000-4000-8000-000000000000
+                transaction_key: api_update_product-12345
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404':
+          description: No product with this id.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              example: {error: "Product not found"}
+        '422':
+          description: Validation or business error.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              examples:
+                hasStock: {value: {error: "Cannot change SKU or bar_code: product already has stock"}}
+                blankName: {value: {error: "Parameter name cannot be blank"}}
+                weightNotPositive: {value: {error: "Parameter weight cannot be less than 0.01"}}
+                dimensionOutOfRange: {value: {error: "Parameter length cannot be less than 0.01"}}
+                dimensionUnit: {value: {error: "Parameter dimension_unit must be within [\"cm\", \"mm\", \"in\", \"m\"]"}}
+                skuTaken: {value: {error: "Products [12346] with same Sku SKU-RED-M"}}
+                upcTaken: {value: {error: "Validation failed: Bar code upc 7501234567890 is already taken for this store."}}
+                imageIncomplete: {value: {error: "Parameter base64_data is required"}}
+                imageTooLarge: {value: {error: "product_image.base64_data exceeds maximum allowed size (10485760 bytes)."}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /lots:
+    get:
+      tags: [Lots]
+      operationId: listLots
+      summary: List the lots of a product
+      description: |
+        **Send `sku` or `bar_code`.** Both show as optional because you may send either one, but a request
+        with neither returns 422 `either sku or bar_code is required`. In the playground, open the optional
+        fields and fill in one of them.
+
+        Returns the lots of exactly one product, with each lot's status, expiration date and stock
+        buckets. The product is addressed by `sku` or `bar_code` (at least one is required) and is
+        looked up across the stores your token can access; there is no `store_id` parameter.
+        - Lots are ordered by expiration date, soonest first; lots without an expiration date come last. Default page size is 25, maximum 200.
+        - A product that exists but has no lots returns `lots: []` with `total_count: 0`.
+        - If you send both `sku` and `bar_code` they must identify the same product; otherwise the response is 404. A product in a store your token cannot see is indistinguishable from a missing one (404).
+        - If the identifier matches more than one product (possible when the same SKU exists in two of your stores) the response is 422 naming the product ids.
+        - Variant parent products are not addressable; query the variant's own SKU.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sku
+          in: query
+          required: false
+          description: Exact SKU of the product. Required unless `bar_code` is sent. Must not be blank.
+          schema: {type: string}
+          example: SKU-RED-M
+        - name: bar_code
+          in: query
+          required: false
+          description: Exact barcode (UPC/EAN) of the product. Required unless `sku` is sent. Must not be blank.
+          schema: {type: string}
+          example: "7501234567890"
+        - name: lot_code
+          in: query
+          required: false
+          description: Exact lot code to return (no substring matching).
+          schema: {type: string}
+          example: SKU-RED-M-L2026-04
+        - name: status
+          in: query
+          required: false
+          description: Lot status to include. Send a single value or repeat as `status[]` for several.
+          schema:
+            oneOf:
+              - type: string
+                enum: [ACTIVE, HOLDED, DAMAGED, EXPIRED]
+              - type: array
+                items:
+                  type: string
+                  enum: [ACTIVE, HOLDED, DAMAGED, EXPIRED]
+          style: form
+          explode: true
+          example: ACTIVE
+        - name: expiration_from
+          in: query
+          required: false
+          description: Only lots expiring on or after this date (`YYYY-MM-DD`, inclusive).
+          schema: {type: string, format: date}
+          example: "2026-01-01"
+        - name: expiration_to
+          in: query
+          required: false
+          description: Only lots expiring on or before this date (`YYYY-MM-DD`, inclusive).
+          schema: {type: string, format: date}
+          example: "2026-12-31"
+        - name: page
+          in: query
+          required: false
+          description: Page number, starting at 1.
+          schema: {type: integer, minimum: 1, default: 1}
+          example: 1
+        - name: per_page
+          in: query
+          required: false
+          description: Lots per page, between 1 and 200.
+          schema: {type: integer, minimum: 1, maximum: 200, default: 25}
+          example: 25
+      responses:
+        '200':
+          description: The product and one page of its lots.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LotsResponse'}
+              example:
+                product:
+                  id: 12345
+                  store_id: 1234
+                  name: Widget Pro Black
+                  skus: [SKU-RED-M]
+                  bar_code: "7501234567890"
+                  has_expiration: true
+                lots:
+                  - id: 987
+                    lot_code: SKU-RED-M-L2026-04
+                    status: ACTIVE
+                    expiration_date: "2026-06-30"
+                    stock:
+                      IN_WAREHOUSE: 15
+                      AVAILABLE: 12
+                      AVAILABLE_NOT_EXTERNALLY_CONFIRMED: 0
+                      AVAILABLE_EXTERNALLY_CONFIRMED: 12
+                      RECEPTION-INCOMING-SELL-AHEAD: 0
+                      DAMAGED: 0
+                      HOLDED: 0
+                      EXPIRED: 0
+                      RESERVED: 3
+                      ACTIVE: 12
+                      SHIPPED: 40
+                      RESERVED-WITHOUT-SELL-AHEAD: 3
+                meta:
+                  current_page: 1
+                  next_page: null
+                  prev_page: null
+                  total_pages: 1
+                  first_page: true
+                  last_page: true
+                  per_page: 25
+                  total_count: 1
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404':
+          description: No product your token can see matches the identifier(s).
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              example: {error: "no product found for the given sku/bar_code"}
+        '422':
+          description: Invalid parameters or ambiguous identifier.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              examples:
+                noIdentifier: {value: {error: "either sku or bar_code is required"}}
+                blankSku: {value: {error: "Parameter sku cannot be blank"}}
+                unknownStatus: {value: {error: "Parameter status must be within [\"ACTIVE\", \"HOLDED\", \"DAMAGED\", \"EXPIRED\"]"}}
+                badDate: {value: {error: "'2026-13-45' is not a valid Date"}}
+                perPageTooLarge: {value: {error: "Parameter per_page cannot be greater than 200"}}
+                ambiguous: {value: {error: "ambiguous identifier: it matches product ids 12345, 67890"}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /lots/upsert:
+    post:
+      tags: [Lots]
+      operationId: upsertLot
+      summary: Create a lot or update its expiration date
+      description: |
+        Creates a lot for a product, or updates the expiration date of an existing lot. The lot is
+        identified by its unique code inside the store, which is built as `<sku>-<lot_code>` when
+        `sku` is sent, or is exactly `lot_code` when it is not.
+        - If no lot with that code exists, `sku` is required and must belong to a product of the store; the lot is created with the given `expiration_date` (optional).
+        - If the lot exists, only `expiration_date` is updated, and only when you send one; omitting it leaves the stored date untouched.
+        - Moving the date into the future re-validates the lot shortly after the call: a lot that had been expired is reactivated, together with its stock units. Moving it into the past expires the lot.
+        - `expiration_date` in the response is returned as an ISO 8601 timestamp at UTC midnight of the stored date.
+        - `status` in the response is the lot status in lowercase (`active`, `holded`, `damaged`, `expired`).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LotUpsertRequest'}
+            examples:
+              create:
+                value: {store_id: 1234, sku: SKU-RED-M, lot_code: L2026-04, expiration_date: "2026-12-31"}
+              updateDate:
+                value: {store_id: 1234, lot_code: SKU-RED-M-L2026-04, expiration_date: "2027-01-15"}
+      responses:
+        '200':
+          description: Lot created or updated.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LotUpsertResponse'}
+              example:
+                id: 987
+                unique_code: SKU-RED-M-L2026-04
+                expiration_date: "2026-12-31T00:00:00Z"
+                status: active
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: Validation or business error.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              examples:
+                missingLotCode: {value: {error: "Parameter lot_code is required"}}
+                missingStoreId: {value: {error: "Parameter store_id is required"}}
+                badDate: {value: {error: "'31/31/2026' is not a valid Date"}}
+                skuRequiredOnCreate: {value: {error: "sku is required when creating a new lot"}}
+                productNotFound: {value: {error: "No product found with sku SKU-RED-M in store 1234"}}
+                storeNotFound: {value: {error: "Couldn't find Store with 'id'=1234"}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /lots/hold/store/{store_id}:
+    post:
+      tags: [Lots]
+      operationId: holdLot
+      summary: Put a lot on hold
+      description: |
+        Withholds a lot's stock from fulfillment. The lot is identified by `<material_code>-<lot_code>`
+        (material code is the product SKU). The hold is applied asynchronously right after the call:
+        the lot moves to `HOLDED` and its sellable units stop being assigned to orders. Use
+        `POST /lots/unhold/store/{store_id}` to release it.
+        - The `status` in the response is the lot status at the moment of the request, in lowercase, so it still reads `active` on a successful hold request.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: store_id
+          in: path
+          required: true
+          description: Store the lot belongs to.
+          schema: {type: integer}
+          example: 1234
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LotHoldRequest'}
+            example: {material_code: SKU-RED-M, lot_code: L2026-04}
+      responses:
+        '200':
+          description: Hold requested.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LotHoldResponse'}
+              example: {unique_code: SKU-RED-M-L2026-04, status: active}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: Validation or business error.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              examples:
+                missingParam: {value: {error: "Parameter material_code is required"}}
+                lotNotFound: {value: {error: "No lot found with unique_code SKU-RED-M-L2026-04"}}
+                ambiguous: {value: {error: "Mutiple lots with unique_code SKU-RED-M-L2026-04, this identifier must be unique"}}
+                storeNotFound: {value: {error: "Couldn't find Store with 'id'=1234"}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /lots/unhold/store/{store_id}:
+    post:
+      tags: [Lots]
+      operationId: unholdLot
+      summary: Release a lot from hold
+      description: |
+        Releases a lot previously put on hold so its stock becomes sellable again. The lot is
+        identified by `<material_code>-<lot_code>` (material code is the product SKU). The release is
+        applied asynchronously right after the call.
+        - The `status` in the response is the lot status at the moment of the request, in lowercase, so it still reads `holded` on a successful release request.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: store_id
+          in: path
+          required: true
+          description: Store the lot belongs to.
+          schema: {type: integer}
+          example: 1234
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LotHoldRequest'}
+            example: {material_code: SKU-RED-M, lot_code: L2026-04}
+      responses:
+        '200':
+          description: Release requested.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LotHoldResponse'}
+              example: {unique_code: SKU-RED-M-L2026-04, status: holded}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: Validation or business error.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              examples:
+                missingParam: {value: {error: "Parameter lot_code is required"}}
+                lotNotFound: {value: {error: "No lot found with unique_code SKU-RED-M-L2026-04"}}
+                ambiguous: {value: {error: "Mutiple lots with unique_code SKU-RED-M-L2026-04, this identifier must be unique"}}
+                storeNotFound: {value: {error: "Couldn't find Store with 'id'=1234"}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /reports/inventory-transactions:
+    get:
+      tags: [Reports]
+      operationId: getInventoryTransactionsReport
+      summary: Inventory transactions report
+      description: |
+        Returns every inventory movement of a store in a date range as data rows: the same rows the
+        inventory transactional CSV report carries, with numbers as numbers and timestamps in ISO 8601.
+        Each row is one movement (inbound, sale, return, damaged, lost, transfer) with its signed
+        volume, the product's balance after the movement, the warehouse, and the Brazilian invoice
+        (NF-e) linked to it when there is one.
+        - **This report must be enabled for your store by Cubbo.** Until it is, every call returns 422 with code `REPORT_NOT_ENABLED`.
+        - `from` and `to` accept a date (`YYYY-MM-DD`) or a timestamp. A bare date covers the whole day in the report's time zone (America/Sao_Paulo); a timestamp is used as sent. Both must be complete dates (year, month and day).
+        - The range may not exceed 92 days, and `from` must be on or before `to`.
+        - At most 10000 rows are returned per call. Larger results are refused with `RESULT_TOO_LARGE` rather than truncated, because `balance_after` is absolute and a narrower range is still correct: split the range and call again.
+        - `skus[]` restricts the rows to the given SKUs of the store.
+        - Rows are in chronological order. The data comes from a replica, so very recent movements can lag.
+        - A store that does not exist or that your token cannot access returns 404 with code `STORE_NOT_FOUND`; the two cases are deliberately indistinguishable.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: store_id
+          in: query
+          required: true
+          description: Store to report on.
+          schema: {type: integer}
+          example: 1234
+        - name: from
+          in: query
+          required: true
+          description: Start of the range. A date (`YYYY-MM-DD`) starts at 00:00:00 of that day in America/Sao_Paulo; a timestamp is used as sent.
+          schema: {type: string}
+          example: "2026-06-01"
+        - name: to
+          in: query
+          required: true
+          description: End of the range. A date (`YYYY-MM-DD`) ends at 23:59:59 of that day in America/Sao_Paulo; a timestamp is used as sent (an explicit `T00:00:00` is midnight, not the whole day).
+          schema: {type: string}
+          example: "2026-06-30"
+        - name: skus[]
+          in: query
+          required: false
+          description: Only movements of products carrying one of these SKUs. Repeat the parameter for several SKUs.
+          schema:
+            type: array
+            items: {type: string}
+          style: form
+          explode: true
+          example: [SKU-RED-M]
+      responses:
+        '200':
+          description: The report rows and the resolved range.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InventoryTransactionsResponse'}
+              example:
+                data:
+                  - cnpj: "00.000.000/0001-00"
+                    store_name: Example Store
+                    transaction_type: inbound
+                    invoice_access_key: "00000000000000000000000000000000000000000000"
+                    invoice_number: S1 N1001
+                    order_number: "5678"
+                    inventory_type: physical
+                    inbound_outbound: inbound
+                    warehouse_code: WH-SP-01
+                    warehouse_name: Sao Paulo
+                    sku_cph: SKU-RED-M
+                    name: Widget Pro Black
+                    material_sku: SKU-RED-M
+                    volume: 50
+                    quantity: 50
+                    balance_after: 50
+                    timestamp: "2026-06-02T10:15:00-03:00"
+                    quality: good
+                    quality_source: null
+                  - cnpj: "00.000.000/0001-00"
+                    store_name: Example Store
+                    transaction_type: sale
+                    invoice_access_key: "00000000000000000000000000000000000000000001"
+                    invoice_number: S1 N1002
+                    order_number: ORD-0001
+                    inventory_type: physical
+                    inbound_outbound: outbound
+                    warehouse_code: WH-SP-01
+                    warehouse_name: Sao Paulo
+                    sku_cph: SKU-RED-M
+                    name: Widget Pro Black
+                    material_sku: SKU-RED-M
+                    volume: -2
+                    quantity: 2
+                    balance_after: 48
+                    timestamp: "2026-06-03T16:40:12-03:00"
+                    quality: good
+                    quality_source: null
+                  - cnpj: "00.000.000/0001-00"
+                    store_name: Example Store
+                    transaction_type: lost
+                    invoice_access_key: null
+                    invoice_number: null
+                    order_number: ORD-0002
+                    inventory_type: virtual
+                    inbound_outbound: inbound
+                    warehouse_code: WH-SP-01
+                    warehouse_name: Sao Paulo
+                    sku_cph: SKU-RED-M
+                    name: Widget Pro Black
+                    material_sku: SKU-RED-M
+                    volume: 1
+                    quantity: 1
+                    balance_after: 1
+                    timestamp: "2026-06-10T09:00:00-03:00"
+                    quality: lost
+                    quality_source: RETURN
+                meta:
+                  row_count: 3
+                  from: "2026-06-01T00:00:00-03:00"
+                  to: "2026-06-30T23:59:59-03:00"
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404':
+          description: The store does not exist or your token cannot access it.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReportError'}
+              example: {error: store_not_found, code: STORE_NOT_FOUND}
+        '422':
+          description: Report not enabled, invalid range, or result too large. `code` identifies the case; parameter errors carry a null `code`.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReportError'}
+              examples:
+                reportNotEnabled:
+                  value: {error: "the inventory transactional report is not enabled for this store", code: REPORT_NOT_ENABLED, context: null}
+                invalidDate:
+                  value: {error: "`to` is not a valid date or timestamp", code: INVALID_DATE, context: null}
+                invalidRange:
+                  value: {error: "`from` must be on or before `to`", code: INVALID_DATE_RANGE, context: null}
+                rangeTooWide:
+                  value: {error: "date range cannot exceed 92 days", code: DATE_RANGE_TOO_WIDE, context: null}
+                resultTooLarge:
+                  value: {error: "the requested range returns 15230 rows, more than the 10000 this endpoint returns at once; request a narrower range", code: RESULT_TOO_LARGE, context: {row_count: 15230, max_rows: 10000}}
+                missingParam:
+                  value: {error: "Parameter from is required", code: null, context: null}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+components:
+  schemas:
+    InventoryResponse:
+      type: object
+      description: One page of the store catalog with stock.
+      properties:
+        products:
+          type: array
+          description: Products on this page.
+          items: {$ref: '#/components/schemas/Product'}
+        meta: {$ref: '#/components/schemas/PaginationMeta'}
+      required: [products, meta]
+
+    Product:
+      type: object
+      description: A product as returned by `GET /inventory`, with its aggregate stock and optional unit and lot detail.
+      properties:
+        id:
+          type: integer
+          description: Cubbo product id.
+          example: 12345
+        name:
+          type: string
+          description: Product display name.
+          example: Widget Pro Black
+        billing_name:
+          type: [string, 'null']
+          description: Name printed on invoices, when different from `name`.
+          example: Widget Pro - Black Edition
+        description:
+          type: [string, 'null']
+          description: Product description (may contain HTML).
+          example: "<p>A professional-grade widget.</p>"
+        has_imei:
+          type: boolean
+          description: Each unit is identified by an IMEI.
+          example: false
+        is_fragile:
+          type: boolean
+          description: Requires fragile handling.
+          example: false
+        is_kit:
+          type: boolean
+          description: The product is a kit (bundle) of other products; see `kit_childs`.
+          example: false
+        bar_code:
+          type: [string, 'null']
+          description: Barcode (UPC/EAN).
+          example: "7501234567890"
+        is_dropshipping:
+          type: boolean
+          description: Fulfilled by dropshipping; Cubbo does not hold stock for it.
+          example: false
+        has_expiration:
+          type: [boolean, 'null']
+          description: Stock is tracked by lot with an expiration date.
+          example: true
+        freshness:
+          type: [integer, 'null']
+          description: Minimum shelf life in days a lot must have when received, for expirable products.
+          example: 180
+        is_scannable:
+          type: boolean
+          description: Units can be scanned at picking. False for marketing inserts that are identified by image.
+          example: true
+        price:
+          type: [string, 'null']
+          description: Unit price, as a decimal string.
+          example: "99.99"
+        weight:
+          type: [number, 'null']
+          description: Unit weight in `weight_unit` (stored in kilograms when created through the API).
+          example: 2.5
+        weight_unit:
+          type: [string, 'null']
+          description: Unit of `weight`, for example `kg`.
+          example: kg
+        length:
+          type: [string, 'null']
+          description: Package length in `dimension_unit`, as a decimal string.
+          example: "10.0"
+        width:
+          type: [string, 'null']
+          description: Package width in `dimension_unit`, as a decimal string.
+          example: "8.0"
+        height:
+          type: [string, 'null']
+          description: Package height in `dimension_unit`, as a decimal string.
+          example: "5.0"
+        dimension_unit:
+          type: string
+          description: Unit of the dimensions.
+          enum: [cm, mm, in, m]
+          example: cm
+        stock:
+          oneOf:
+            - $ref: '#/components/schemas/ProductStock'
+            - type: 'null'
+          description: Aggregate stock across all lots and locations. Null for a product that has never had stock computed.
+        units:
+          type: array
+          description: Per-unit detail. Present only when there is something to report (see endpoint description).
+          items: {$ref: '#/components/schemas/StockUnitDetail'}
+        lots:
+          type: array
+          description: Per-lot detail. Present only on products that have lots.
+          items: {$ref: '#/components/schemas/ProductLotDetail'}
+        store:
+          type: object
+          description: Store that owns the product.
+          properties:
+            id: {type: integer, description: Store id., example: 1234}
+            name: {type: string, description: Store name., example: Example Store}
+        product_codes:
+          type: array
+          description: SKUs registered for the product.
+          items: {$ref: '#/components/schemas/ProductCode'}
+        kit_childs:
+          type: array
+          description: Components of the kit. Empty unless `is_kit` is true.
+          items: {$ref: '#/components/schemas/ProductKitComponent'}
+      required: [id, name, is_kit, stock, store, product_codes, kit_childs]
+
+    ProductCode:
+      type: object
+      description: A SKU registered for a product.
+      properties:
+        id:
+          type: integer
+          description: SKU record id.
+          example: 9001
+        sku:
+          type: string
+          description: The SKU.
+          example: SKU-RED-M
+      required: [id, sku]
+
+    ProductStock:
+      type: object
+      description: Aggregate stock counts of a product. All counts are units. Keys with a dash are returned exactly as written.
+      properties:
+        IN_WAREHOUSE:
+          type: integer
+          description: Units physically in the warehouse, in any status.
+          example: 250
+        AVAILABLE:
+          type: integer
+          description: Units you can sell now (active units minus buffer stock, plus sell-ahead units).
+          example: 188
+        AVAILABLE_NOT_EXTERNALLY_CONFIRMED:
+          type: integer
+          description: Available units from replenishments not yet confirmed by your system (relevant when your store only sells confirmed stock).
+          example: 0
+        AVAILABLE_EXTERNALLY_CONFIRMED:
+          type: integer
+          description: Available units from confirmed replenishments, plus sell-ahead units.
+          example: 188
+        UNAVAILABLE:
+          type: integer
+          description: Units present but not sellable (on hold, expired, damaged, in reception).
+          example: 22
+        RECEPTION-INCOMING-SELL-AHEAD:
+          type: integer
+          description: Sell-ahead units that arrived and are being received.
+          example: 0
+        INCOMING-SELL-AHEAD:
+          type: integer
+          description: Sell-ahead units still inbound.
+          example: 0
+        RESERVED-RECEPTION-INCOMING-SELL-AHEAD:
+          type: integer
+          description: Sell-ahead units in reception already reserved by orders.
+          example: 0
+        RESERVED-INCOMING-SELL-AHEAD:
+          type: integer
+          description: Inbound sell-ahead units already reserved by orders.
+          example: 0
+        DAMAGED:
+          type: integer
+          description: Units marked as damaged.
+          example: 2
+        RECEPTION:
+          type: integer
+          description: Units in the reception process, not yet put away.
+          example: 0
+        OUT_OF_STOCK:
+          type: integer
+          description: Units requested by orders that could not be reserved for lack of stock.
+          example: 0
+        RESERVED:
+          type: integer
+          description: Units reserved, by orders and by inbound returns.
+          example: 40
+        RESERVED_BY_ORDERS:
+          type: integer
+          description: Units reserved by open orders.
+          example: 40
+        RESERVED_BY_RETURNS:
+          type: integer
+          description: Units reserved by inbound returns.
+          example: 0
+        ACTIVE:
+          type: integer
+          description: Active (sellable, unreserved) units on the shelf.
+          example: 188
+        RESERVED-WITHOUT-SELL-AHEAD:
+          type: integer
+          description: Units reserved by orders, excluding sell-ahead reservations.
+          example: 40
+        EXPIRED:
+          type: integer
+          description: Units in expired lots.
+          example: 20
+        HOLDED:
+          type: integer
+          description: Units in lots on hold.
+          example: 20
+        BUFFER_STOCK:
+          type: integer
+          description: Safety stock configured for the product, excluded from `AVAILABLE`.
+          example: 0
+        LOST:
+          type: integer
+          description: Units marked as lost.
+          example: 1
+        DAMAGED_BY_SOURCE:
+          type: object
+          description: "`DAMAGED` split by where the damage was found. Keys are `REPLENISHMENT`, `RETURN`, `STORAGE` or `UNKNOWN`; only sources with units appear."
+          additionalProperties: {type: integer}
+          example: {STORAGE: 2}
+        LOST_BY_SOURCE:
+          type: object
+          description: "`LOST` split by where the loss happened. Keys are `REPLENISHMENT`, `RETURN`, `STORAGE`, `DELIVERY` or `UNKNOWN`; only sources with units appear."
+          additionalProperties: {type: integer}
+          example: {RETURN: 1}
+
+    StockUnitDetail:
+      type: object
+      description: One stock unit of a product. Unit-code products carry `unit_code`; other products only list damaged and lost units, without a code.
+      properties:
+        unit_code:
+          type: string
+          description: The unit's unique code (IMEI or serial). Present only for unit-code products.
+          example: "356789100000001"
+        status:
+          type: string
+          description: Unit status.
+          enum: [ACTIVE, RESERVED, DAMAGED, LOST]
+          example: DAMAGED
+        damaged_source:
+          type: [string, 'null']
+          description: Where the damage was found. Present only on `DAMAGED` units.
+          enum: [REPLENISHMENT, RETURN, STORAGE, null]
+          example: STORAGE
+        lost_source:
+          type: string
+          description: Where the loss happened. Present only when set, on `LOST` units.
+          enum: [REPLENISHMENT, RETURN, STORAGE, DELIVERY]
+          example: RETURN
+      required: [status]
+
+    ProductLotDetail:
+      type: object
+      description: A lot of the product with its unit counts, as embedded in `GET /inventory`.
+      properties:
+        unique_code:
+          type: string
+          description: Lot code, unique within the store.
+          example: SKU-RED-M-L2026-04
+        expiration_date:
+          type: [string, 'null']
+          format: date
+          description: Expiration date (`YYYY-MM-DD`), or null when the lot has none.
+          example: "2026-12-31"
+        status:
+          type: string
+          description: Lot status.
+          enum: [ACTIVE, HOLDED, DAMAGED, EXPIRED]
+          example: ACTIVE
+        quantities:
+          type: object
+          description: The lot's units counted by unit status (for example `ACTIVE`, `RESERVED`, `DAMAGED`, `HOLDED`, `EXPIRED`, `SHIPPED`). Only statuses with at least one unit appear; empty object for a lot without units.
+          additionalProperties: {type: integer}
+          example: {ACTIVE: 120, RESERVED: 30, DAMAGED: 2}
+      required: [unique_code, expiration_date, status, quantities]
+
+    ProductKitComponent:
+      type: object
+      description: One component line of a kit (bundle).
+      properties:
+        id:
+          type: integer
+          description: Kit component line id.
+          example: 501
+        quantity:
+          type: integer
+          description: Units of the component in one kit.
+          example: 2
+        price_per_item:
+          type: [string, 'null']
+          description: Price assigned to each component unit when the kit is sold, as a decimal string.
+          example: "49.50"
+        kit_product:
+          type: [object, 'null']
+          description: The component product. Null when the component product has been removed from the catalog.
+          properties:
+            id: {type: integer, description: Component product id., example: 12345}
+            name: {type: string, description: Component product name., example: Widget Pro Black}
+            product_codes:
+              type: array
+              description: SKUs of the component product.
+              items: {$ref: '#/components/schemas/ProductCode'}
+      required: [id, quantity, kit_product]
+
+    ProductImageInput:
+      type: object
+      description: An image sent inline as base64. PNG or JPEG, at most 5 MB decoded; the base64 payload may not exceed 10485760 bytes.
+      properties:
+        filename:
+          type: string
+          description: File name with extension.
+          example: widget.png
+        base64_data:
+          type: string
+          description: Base64-encoded image bytes. A `data:image/png;base64,` prefix is accepted and stripped.
+          example: iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==
+        content_type:
+          type: string
+          description: MIME type of the image.
+          enum: [image/png, image/jpeg]
+          example: image/png
+      required: [filename, base64_data, content_type]
+
+    ProductVariantInput:
+      type: object
+      description: One variant of a `has_variants` product. Each variant becomes its own product.
+      properties:
+        name:
+          type: string
+          description: Variant name. The created product is named `"<product name> <variant name>"`.
+          example: S
+        skus:
+          type: array
+          description: SKUs of the variant. At least one, unique within the store.
+          items: {type: string}
+          example: [SKU-TEE-S]
+        bar_code:
+          type: [string, 'null']
+          description: Barcode (UPC/EAN) of the variant, unique within the store.
+          example: "7501234567892"
+        options_name:
+          type: array
+          description: Option values that define this variant.
+          items:
+            type: object
+            properties:
+              name: {type: string, description: Option name., example: Size}
+              value: {type: string, description: Option value., example: S}
+            required: [name, value]
+      required: [name, skus]
+
+    ProductOptionInput:
+      type: object
+      description: An option axis of a variant product (for example Size) and its possible values.
+      properties:
+        name:
+          type: string
+          description: Option name.
+          example: Size
+        tags:
+          type: array
+          description: Possible values.
+          items: {type: string}
+          example: [S, M, L]
+      required: [name, tags]
+
+    ProductCreateRequest:
+      type: object
+      description: Body of `POST /products`. `skus` and `upc` are required for a single product; `variants` is required when `has_variants` is true.
+      properties:
+        store_id:
+          type: integer
+          description: Store to create the product in.
+          example: 1234
+        name:
+          type: string
+          description: Product name.
+          example: Widget Pro Black
+        description:
+          type: string
+          description: Product description; HTML is allowed.
+          example: "<p>A professional-grade widget.</p>"
+        skus:
+          type: array
+          description: SKUs of the product (single-product requests). Required unless `has_variants` is true. Each must be unique within the store.
+          items: {type: string}
+          example: [SKU-RED-M]
+        upc:
+          type: string
+          description: Barcode (UPC/EAN). Required unless `has_variants` is true. Must be unique within the store and must not match another product's SKU.
+          example: "7501234567890"
+        has_variants:
+          type: boolean
+          description: Create one product per entry in `variants` instead of a single product.
+          default: false
+          example: false
+        options:
+          type: array
+          description: Option axes of a variant product. Only with `has_variants`.
+          items: {$ref: '#/components/schemas/ProductOptionInput'}
+        variants:
+          type: array
+          description: Variants to create. Required and non-empty when `has_variants` is true.
+          items: {$ref: '#/components/schemas/ProductVariantInput'}
+        is_fragile:
+          type: boolean
+          description: Requires fragile handling.
+          default: false
+          example: false
+        is_dropshipping:
+          type: boolean
+          description: Product fulfilled by dropshipping (Cubbo holds no stock). Not allowed with `has_variants`.
+          default: false
+          example: false
+        has_expiration:
+          type: boolean
+          description: Stock is tracked by lot with expiration dates. Requires `freshness`.
+          default: false
+          example: true
+        freshness:
+          type: [integer, 'null']
+          description: Minimum shelf life in days a lot must have when received. Required when `has_expiration` is true.
+          example: 180
+        tax_code:
+          type: [string, 'null']
+          description: Brazil only. NCM code of the product (for example `3401.11.90`) or the id of an NCM configuration of the store. Must already be configured for the store.
+          example: "3401.11.90"
+        is_packageless:
+          type: boolean
+          description: Ships without additional packaging.
+          default: false
+          example: false
+        has_imei:
+          type: boolean
+          description: Each unit is identified by an IMEI.
+          default: false
+          example: false
+        requires_unit_code:
+          type: boolean
+          description: Each unit is identified by a unique code (serial) that is scanned at receiving and picking.
+          default: false
+          example: false
+        product_image_url:
+          type: string
+          description: Public URL of the product image to download and attach (PNG or JPEG).
+          example: https://cdn.example.com/images/widget.png
+        product_image:
+          $ref: '#/components/schemas/ProductImageInput'
+        is_scannable:
+          type: boolean
+          description: Units can be scanned at picking. Set to false for marketing inserts; then `product_image` is required and `has_variants` is not allowed.
+          default: true
+          example: true
+        price:
+          type: number
+          description: Unit price. Up to 8 significant digits. A non-numeric value is stored as 0.
+          default: 0.0
+          example: 99.99
+        billing_name:
+          type: [string, 'null']
+          description: Name printed on invoices, when different from `name`.
+          example: Widget Pro - Black Edition
+        origin:
+          type: string
+          description: Brazil only. Fiscal origin of the goods for the NF-e.
+          enum: [NATIONAL, FOREIGN_IMPORTED, FOREIGN_ACQUIRED_INTERNALLY, NATIONAL_40_70_IMPORTED, NATIONAL_MANUFACTURED, NATIONAL_0_40_IMPORTED, FOREIGN_DIRECT_IMPORT, FOREIGN_ACQUIRED_INTERNALLY_WITHOUT_NATIONAL_SIMILAR, NATIONAL_70_IMPORTED]
+          default: NATIONAL
+          example: NATIONAL
+        extipi:
+          type: [string, 'null']
+          description: Brazil only. IPI exception code (EX TIPI), 2 or 3 digits.
+          example: "001"
+        fci_key:
+          type: [string, 'null']
+          description: Brazil only. FCI (import content form) key for the NF-e.
+          example: 00000000-0000-0000-0000-000000000000
+        weight:
+          type: number
+          description: Unit weight, in `weight_unit`. Stored in kilograms.
+          example: 500
+        weight_unit:
+          type: string
+          description: Unit of `weight`. `g` or `gr` is converted to kilograms; any other value (for example `kg`) is stored as sent. Required for certain marketplace integration accounts.
+          example: g
+        length:
+          type: number
+          description: Package length in `dimension_unit`, between 0.01 and 999999.99.
+          minimum: 0.01
+          maximum: 999999.99
+          example: 10
+        width:
+          type: number
+          description: Package width in `dimension_unit`, between 0.01 and 999999.99.
+          minimum: 0.01
+          maximum: 999999.99
+          example: 8
+        height:
+          type: number
+          description: Package height in `dimension_unit`, between 0.01 and 999999.99.
+          minimum: 0.01
+          maximum: 999999.99
+          example: 5
+        dimension_unit:
+          type: string
+          description: Unit of the dimensions.
+          enum: [cm, mm, in, m]
+          default: cm
+          example: cm
+        master_box_quantity:
+          type: [integer, 'null']
+          description: Certain marketplace integration accounts only. Units per master box for the SKU; registers or updates the master box configuration.
+          minimum: 1
+          example: 12
+        migrate_sku:
+          type: boolean
+          description: Certain marketplace integration accounts only. When the SKU already belongs to another product of the store, move the SKU (with its lots, stock, open order lines and open replenishments) to the new product instead of failing.
+          default: false
+          example: false
+      required: [store_id, name]
+
+    ProductUpdateRequest:
+      type: object
+      description: Body of `PATCH /products/{id}`. Every field is optional; only the fields sent are changed.
+      properties:
+        name:
+          type: string
+          description: New product name. Must not be blank.
+          example: Widget Pro Black v2
+        description:
+          type: string
+          description: New description; HTML is allowed.
+          example: "<p>Updated description.</p>"
+        bar_code:
+          type: string
+          description: New barcode (UPC/EAN). Must be unique within the store. Rejected when the product has stock.
+          example: "7501234567899"
+        price:
+          type: number
+          description: New unit price. Up to 8 significant digits. A non-numeric value is stored as 0.
+          example: 109.99
+        skus:
+          type: array
+          description: Replaces the full SKU list. Rejected when the product has stock. An empty array is ignored.
+          items: {type: string}
+          example: [SKU-RED-M, SKU-RED-M-ALT]
+        product_image:
+          $ref: '#/components/schemas/ProductImageInput'
+        weight:
+          type: number
+          description: New unit weight, in `weight_unit`. Stored in kilograms. Must be at least 0.01.
+          minimum: 0.01
+          example: 750
+        weight_unit:
+          type: string
+          description: Unit of `weight`. `g` or `gr` is converted to kilograms; any other value is stored as sent.
+          example: g
+        length:
+          type: number
+          description: Package length in `dimension_unit`, between 0.01 and 999999.99.
+          minimum: 0.01
+          maximum: 999999.99
+          example: 12.5
+        width:
+          type: number
+          description: Package width in `dimension_unit`, between 0.01 and 999999.99.
+          minimum: 0.01
+          maximum: 999999.99
+          example: 7
+        height:
+          type: number
+          description: Package height in `dimension_unit`, between 0.01 and 999999.99.
+          minimum: 0.01
+          maximum: 999999.99
+          example: 3
+        dimension_unit:
+          type: string
+          description: Unit of the dimensions.
+          enum: [cm, mm, in, m]
+          example: cm
+
+    ProductCreated:
+      type: object
+      description: The product returned by `POST /products` for a single (non-variant) request.
+      properties:
+        id:
+          type: integer
+          description: Cubbo product id. Use it for `PATCH /products/{id}`.
+          example: 12345
+        name:
+          type: string
+          description: Product name.
+          example: Widget Pro Black
+        billing_name:
+          type: [string, 'null']
+          description: Name printed on invoices.
+          example: null
+        description:
+          type: [string, 'null']
+          description: Product description.
+          example: "<p>A professional-grade widget.</p>"
+        has_imei:
+          type: boolean
+          description: Each unit is identified by an IMEI.
+          example: false
+        is_fragile:
+          type: boolean
+          description: Requires fragile handling.
+          example: false
+        is_kit:
+          type: boolean
+          description: Always false for products created through the API.
+          example: false
+        bar_code:
+          type: [string, 'null']
+          description: Barcode (UPC/EAN).
+          example: "7501234567890"
+        is_dropshipping:
+          type: boolean
+          description: Fulfilled by dropshipping.
+          example: false
+        has_expiration:
+          type: [boolean, 'null']
+          description: Stock is tracked by lot with expiration dates.
+          example: true
+        freshness:
+          type: [integer, 'null']
+          description: Minimum shelf life in days at receiving.
+          example: 180
+        is_scannable:
+          type: boolean
+          description: Units can be scanned at picking.
+          example: true
+        price:
+          type: [string, 'null']
+          description: Unit price, as a decimal string.
+          example: "99.99"
+        weight:
+          type: [number, 'null']
+          description: Unit weight in kilograms (after conversion).
+          example: 0.5
+        product_codes:
+          type: array
+          description: SKUs registered for the product.
+          items: {$ref: '#/components/schemas/ProductCode'}
+      required: [id, name, is_kit, product_codes]
+
+    ProductDetailed:
+      type: object
+      description: Full product representation, as used by the Cubbo app. Returned by `PATCH /products/{id}` and, as an array, by `POST /products` with variants.
+      properties:
+        id:
+          type: integer
+          description: Cubbo product id.
+          example: 12345
+        name:
+          type: string
+          description: Product name.
+          example: Widget Pro Black
+        billing_name:
+          type: [string, 'null']
+          description: Name printed on invoices.
+          example: null
+        description:
+          type: [string, 'null']
+          description: Product description (may contain HTML).
+          example: "<p>A professional-grade widget.</p>"
+        has_imei:
+          type: boolean
+          description: Each unit is identified by an IMEI.
+          example: false
+        requires_unit_code:
+          type: boolean
+          description: Each unit is identified by a unique code (serial).
+          example: false
+        allow_unit_code_substitution:
+          type: boolean
+          description: A reserved unit may be swapped for another unit of the same product at picking.
+          example: false
+        personalized_units:
+          type: [boolean, 'null']
+          description: Units are personalized per order.
+          example: false
+        is_fragile:
+          type: boolean
+          description: Requires fragile handling.
+          example: false
+        is_kit:
+          type: boolean
+          description: The product is a kit (bundle).
+          example: false
+        bar_code:
+          type: [string, 'null']
+          description: Barcode (UPC/EAN).
+          example: "7501234567890"
+        is_dropshipping:
+          type: boolean
+          description: Fulfilled by dropshipping.
+          example: false
+        has_expiration:
+          type: [boolean, 'null']
+          description: Stock is tracked by lot with expiration dates.
+          example: true
+        freshness:
+          type: [integer, 'null']
+          description: Minimum shelf life in days at receiving.
+          example: 180
+        stock:
+          oneOf:
+            - $ref: '#/components/schemas/ProductStock'
+            - type: 'null'
+          description: Aggregate stock (without the `LOST` and by-source keys). Null for a product that has never had stock.
+        full_name:
+          type: string
+          description: Product name including the parent name for variants.
+          example: Widget Pro Black
+        is_scannable:
+          type: boolean
+          description: Units can be scanned at picking.
+          example: true
+        product_image_path:
+          type: [string, 'null']
+          description: URL of the product image, when one is attached.
+          example: null
+        price:
+          type: [string, 'null']
+          description: Unit price, as a decimal string.
+          example: "99.99"
+        weight:
+          type: [number, 'null']
+          description: Unit weight in `weight_unit`.
+          example: 0.5
+        weight_unit:
+          type: [string, 'null']
+          description: Unit of `weight`.
+          example: kg
+        origin:
+          type: [string, 'null']
+          description: Brazil only. Fiscal origin of the goods.
+          example: NATIONAL
+        buffer_stock:
+          type: [integer, 'null']
+          description: Safety stock excluded from availability.
+          example: null
+        is_packageless:
+          type: boolean
+          description: Ships without additional packaging.
+          example: false
+        length:
+          type: [string, 'null']
+          description: Package length, as a decimal string.
+          example: "10.0"
+        width:
+          type: [string, 'null']
+          description: Package width, as a decimal string.
+          example: "8.0"
+        height:
+          type: [string, 'null']
+          description: Package height, as a decimal string.
+          example: "5.0"
+        dimension_unit:
+          type: string
+          description: Unit of the dimensions.
+          enum: [cm, mm, in, m]
+          example: cm
+        extipi:
+          type: string
+          description: Brazil only. IPI exception code. Present only when set.
+          example: "001"
+        fci_key:
+          type: string
+          description: Brazil only. FCI key. Present only when set.
+          example: 00000000-0000-0000-0000-000000000000
+        is_discarded:
+          type: boolean
+          description: The product has been removed from the catalog.
+          example: false
+        product_codes:
+          type: array
+          description: SKUs registered for the product, with timestamps.
+          items:
+            type: object
+            properties:
+              id: {type: integer, description: SKU record id., example: 9001}
+              product_id: {type: integer, description: Product id., example: 12345}
+              sku: {type: string, description: The SKU., example: SKU-RED-M}
+              created_at: {type: string, format: date-time, description: When the SKU was registered., example: "2026-10-12T15:04:05.000Z"}
+              updated_at: {type: string, format: date-time, description: Last change of the SKU., example: "2026-10-12T15:04:05.000Z"}
+        kit_childs:
+          type: array
+          description: Components of the kit. Empty unless `is_kit` is true.
+          items:
+            type: object
+            properties:
+              id: {type: integer, description: Kit component line id., example: 501}
+              quantity: {type: integer, description: Units of the component in one kit., example: 2}
+              price_per_item: {type: [string, 'null'], description: Price per component unit, as a decimal string., example: "49.50"}
+              child_product:
+                type: [object, 'null']
+                description: The component product (id, name, codes, stock and flags). Null when it was removed from the catalog.
+                additionalProperties: true
+        store:
+          type: object
+          description: Store that owns the product. Carries the store's id and name plus its configuration fields.
+          properties:
+            id: {type: integer, description: Store id., example: 1234}
+            name: {type: string, description: Store name., example: Example Store}
+          additionalProperties: true
+        ncm_configuration:
+          type: [object, 'null']
+          description: Brazil only. The NCM fiscal configuration linked to the product (`id`, `ncm`, `description` and the tax rates and CFOP codes used on the NF-e). Null when none is linked.
+          additionalProperties: true
+      required: [id, name, is_kit, product_codes]
+
+    AcceptedProcessing:
+      type: object
+      description: Returned with HTTP 202 when a concurrent request for the same resource is still being processed.
+      properties:
+        message:
+          type: string
+          description: Explains which request is still processing.
+          example: "Accepted, but PRODUCT whit skus SKU-RED-M still processing."
+        transaction_id:
+          type: string
+          description: Id of the request already in progress.
+          example: 7f3c2a1e-0000-4000-8000-000000000000
+        transaction_key:
+          type: string
+          description: Concurrency key the two requests collided on.
+          example: api_create_products-SKU-RED-M-1234
+      required: [message, transaction_id, transaction_key]
+
+    LotsResponse:
+      type: object
+      description: Response of `GET /lots`.
+      properties:
+        product: {$ref: '#/components/schemas/LotProduct'}
+        lots:
+          type: array
+          description: One page of the product's lots, soonest expiration first.
+          items: {$ref: '#/components/schemas/Lot'}
+        meta: {$ref: '#/components/schemas/PaginationMeta'}
+      required: [product, lots, meta]
+
+    LotProduct:
+      type: object
+      description: The product whose lots are listed.
+      properties:
+        id:
+          type: integer
+          description: Cubbo product id.
+          example: 12345
+        store_id:
+          type: integer
+          description: Store the product belongs to.
+          example: 1234
+        name:
+          type: string
+          description: Product name.
+          example: Widget Pro Black
+        skus:
+          type: array
+          description: All SKUs of the product.
+          items: {type: string}
+          example: [SKU-RED-M]
+        bar_code:
+          type: [string, 'null']
+          description: Barcode (UPC/EAN).
+          example: "7501234567890"
+        has_expiration:
+          type: [boolean, 'null']
+          description: Stock is tracked by lot with expiration dates.
+          example: true
+      required: [id, store_id, name, skus, bar_code, has_expiration]
+
+    Lot:
+      type: object
+      description: A lot of a product with its stock, as returned by `GET /lots`.
+      properties:
+        id:
+          type: integer
+          description: Lot id.
+          example: 987
+        lot_code:
+          type: string
+          description: Lot code, unique within the store.
+          example: SKU-RED-M-L2026-04
+        status:
+          type: string
+          description: Lot status. Expired lots are moved to `EXPIRED` by an end-of-day process.
+          enum: [ACTIVE, HOLDED, DAMAGED, EXPIRED]
+          example: ACTIVE
+        expiration_date:
+          type: [string, 'null']
+          format: date
+          description: Expiration date (`YYYY-MM-DD`), or null when the lot has none.
+          example: "2026-06-30"
+        stock: {$ref: '#/components/schemas/LotStock'}
+      required: [id, lot_code, status, expiration_date, stock]
+
+    LotStock:
+      type: object
+      description: Unit counts of one lot. Buffer stock is not applied at lot level.
+      properties:
+        IN_WAREHOUSE:
+          type: integer
+          description: Units physically in the warehouse (active, reserved, damaged, on hold, expired, in reception).
+          example: 15
+        AVAILABLE:
+          type: integer
+          description: Units you can sell now (active plus sell-ahead units).
+          example: 12
+        AVAILABLE_NOT_EXTERNALLY_CONFIRMED:
+          type: integer
+          description: Available units from replenishments not yet confirmed by your system.
+          example: 0
+        AVAILABLE_EXTERNALLY_CONFIRMED:
+          type: integer
+          description: Available units from confirmed replenishments, plus sell-ahead units.
+          example: 12
+        RECEPTION-INCOMING-SELL-AHEAD:
+          type: integer
+          description: Sell-ahead units that arrived and are being received.
+          example: 0
+        DAMAGED:
+          type: integer
+          description: Damaged units.
+          example: 0
+        HOLDED:
+          type: integer
+          description: Units withheld by a lot hold.
+          example: 0
+        EXPIRED:
+          type: integer
+          description: Expired units.
+          example: 0
+        RESERVED:
+          type: integer
+          description: Units reserved by orders, including sell-ahead reservations.
+          example: 3
+        ACTIVE:
+          type: integer
+          description: Active (sellable, unreserved) units.
+          example: 12
+        SHIPPED:
+          type: integer
+          description: Units of this lot that already left the warehouse.
+          example: 40
+        RESERVED-WITHOUT-SELL-AHEAD:
+          type: integer
+          description: Reserved units excluding sell-ahead reservations.
+          example: 3
+      required: [IN_WAREHOUSE, AVAILABLE, AVAILABLE_NOT_EXTERNALLY_CONFIRMED, AVAILABLE_EXTERNALLY_CONFIRMED, RECEPTION-INCOMING-SELL-AHEAD, DAMAGED, HOLDED, EXPIRED, RESERVED, ACTIVE, SHIPPED, RESERVED-WITHOUT-SELL-AHEAD]
+
+    LotUpsertRequest:
+      type: object
+      description: Body of `POST /lots/upsert`.
+      properties:
+        store_id:
+          type: integer
+          description: Store the lot belongs to.
+          example: 1234
+        sku:
+          type: string
+          description: SKU of the product. Required when creating a lot. When sent, the lot's unique code becomes `<sku>-<lot_code>`.
+          example: SKU-RED-M
+        lot_code:
+          type: string
+          description: Lot code. Used as the full unique code when `sku` is omitted.
+          example: L2026-04
+        expiration_date:
+          type: string
+          format: date
+          description: Expiration date (`YYYY-MM-DD`). Optional; when omitted on an existing lot the stored date is kept.
+          example: "2026-12-31"
+      required: [store_id, lot_code]
+
+    LotUpsertResponse:
+      type: object
+      description: The lot after the upsert.
+      properties:
+        id:
+          type: integer
+          description: Lot id.
+          example: 987
+        unique_code:
+          type: string
+          description: The lot's unique code within the store.
+          example: SKU-RED-M-L2026-04
+        expiration_date:
+          type: [string, 'null']
+          format: date-time
+          description: Expiration date as an ISO 8601 timestamp at UTC midnight, or null.
+          example: "2026-12-31T00:00:00Z"
+        status:
+          type: string
+          description: Lot status, in lowercase.
+          enum: [active, holded, damaged, expired]
+          example: active
+      required: [id, unique_code, expiration_date, status]
+
+    LotHoldRequest:
+      type: object
+      description: Body of `POST /lots/hold/store/{store_id}` and `POST /lots/unhold/store/{store_id}`.
+      properties:
+        material_code:
+          type: string
+          description: Product SKU (material code). Combined with `lot_code` as `<material_code>-<lot_code>` to find the lot.
+          example: SKU-RED-M
+        lot_code:
+          type: string
+          description: Lot code.
+          example: L2026-04
+      required: [material_code, lot_code]
+
+    LotHoldResponse:
+      type: object
+      description: Acknowledgement of a hold or release request.
+      properties:
+        unique_code:
+          type: string
+          description: The lot's unique code within the store.
+          example: SKU-RED-M-L2026-04
+        status:
+          type: string
+          description: Lot status at the moment of the request, in lowercase. The hold or release is applied right after.
+          enum: [active, holded, damaged, expired]
+          example: active
+      required: [unique_code, status]
+
+    InventoryTransactionsResponse:
+      type: object
+      description: Response of `GET /reports/inventory-transactions`.
+      properties:
+        data:
+          type: array
+          description: Movements in chronological order.
+          items: {$ref: '#/components/schemas/InventoryTransaction'}
+        meta:
+          type: object
+          description: Row count and the range actually applied.
+          properties:
+            row_count:
+              type: integer
+              description: Number of rows in `data`.
+              example: 3
+            from:
+              type: string
+              format: date-time
+              description: Resolved start of the range, in the report time zone.
+              example: "2026-06-01T00:00:00-03:00"
+            to:
+              type: string
+              format: date-time
+              description: Resolved end of the range, in the report time zone.
+              example: "2026-06-30T23:59:59-03:00"
+          required: [row_count, from, to]
+      required: [data, meta]
+
+    InventoryTransaction:
+      type: object
+      description: One inventory movement of a product.
+      properties:
+        cnpj:
+          type: [string, 'null']
+          description: The store's CNPJ (Brazilian company tax id).
+          example: "00.000.000/0001-00"
+        store_name:
+          type: string
+          description: Store name.
+          example: Example Store
+        transaction_type:
+          type: string
+          description: Kind of movement.
+          enum: [inbound, sale, return, damaged, lost, transfer_in, transfer_out]
+          example: sale
+        invoice_access_key:
+          type: [string, 'null']
+          description: Access key (44 digits) of the NF-e linked to the movement, when there is one.
+          example: "00000000000000000000000000000000000000000001"
+        invoice_number:
+          type: [string, 'null']
+          description: Series and number of the linked NF-e, as `S<series> N<number>`.
+          example: S1 N1002
+        order_number:
+          type: [string, 'null']
+          description: Order number for sale and return movements; replenishment id for inbound movements.
+          example: ORD-0001
+        inventory_type:
+          type: string
+          description: "`physical` for stock in the warehouse; `virtual` for lost stock, which is still owned but cannot be picked."
+          enum: [physical, virtual]
+          example: physical
+        inbound_outbound:
+          type: string
+          description: Direction of the movement (sign of `volume`).
+          enum: [inbound, outbound]
+          example: outbound
+        warehouse_code:
+          type: [string, 'null']
+          description: Code of the warehouse where the movement happened.
+          example: WH-SP-01
+        warehouse_name:
+          type: [string, 'null']
+          description: Name of the warehouse.
+          example: Sao Paulo
+        sku_cph:
+          type: [string, 'null']
+          description: First SKU of the product.
+          example: SKU-RED-M
+        name:
+          type: [string, 'null']
+          description: Product name.
+          example: Widget Pro Black
+        material_sku:
+          type: [string, 'null']
+          description: Second SKU of the product when it has one, otherwise the first.
+          example: SKU-RED-M
+        volume:
+          type: integer
+          description: Signed quantity moved (positive inbound, negative outbound).
+          example: -2
+        quantity:
+          type: integer
+          description: Absolute quantity moved.
+          example: 2
+        balance_after:
+          type: [integer, 'null']
+          description: Product balance in that quality bucket after the movement.
+          example: 48
+        timestamp:
+          type: [string, 'null']
+          format: date-time
+          description: When the movement happened, in the report time zone (America/Sao_Paulo).
+          example: "2026-06-03T16:40:12-03:00"
+        quality:
+          type: string
+          description: Stock quality the movement affected.
+          enum: [good, damaged, lost]
+          example: good
+        quality_source:
+          type: [string, 'null']
+          description: For damaged and lost movements, where the damage or loss originated. Null for good stock.
+          enum: [REPLENISHMENT, RETURN, DELIVERY, STORAGE, null]
+          example: null
+      required: [store_name, transaction_type, inventory_type, inbound_outbound, volume, quantity, quality]
+
+    ReportError:
+      type: object
+      description: Error body of the reports endpoint, with a machine-readable code.
+      properties:
+        error:
+          type: string
+          description: Human-readable message.
+          example: "the inventory transactional report is not enabled for this store"
+        code:
+          type: [string, 'null']
+          description: Error code. Null for parameter errors.
+          enum: [STORE_NOT_FOUND, REPORT_NOT_ENABLED, INVALID_DATE, INVALID_DATE_RANGE, DATE_RANGE_TOO_WIDE, RESULT_TOO_LARGE, null]
+          example: REPORT_NOT_ENABLED
+        context:
+          type: [object, 'null']
+          description: Extra detail for some codes. `RESULT_TOO_LARGE` carries `row_count` and `max_rows`.
+          additionalProperties: true
+          example: null
+      required: [error]

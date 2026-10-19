@@ -1,0 +1,1275 @@
+paths:
+  /returns:
+    post:
+      tags: [Returns]
+      operationId: createReturn
+      summary: Request a return for a shipped order
+      description: |
+        Creates a return request for an order your store already shipped. By default the return is
+        created as `TO_BE_DETERMINED` in status `PENDING`: it records what the customer says is coming
+        back and waits to be reviewed (resolved) by Cubbo or by you. If you already know the outcome,
+        set `return_type` to `SIMPLE_RETURN` or `EXCHANGE` and the return is resolved in the same call:
+        the order moves to `returning`, the return moves to `REQUESTED`, the return instructions (RMA
+        document) are generated and emailed to the customer, and optionally a prepaid return shipping
+        label is booked with the carrier.
+
+        - The order must belong to `store_id`, be in status `shipped`, must not be a pick-and-ship
+          order, and must not already have an active (non-cancelled) return.
+        - Omit `products` (or send `[]`) for a full return: every ordered item at its full ordered
+          quantity. Otherwise list the SKUs and quantities coming back; repeated SKUs are summed.
+        - Kits cannot be returned or exchanged; list the individual products instead.
+        - `generate_guide` is required whenever `return_type` is not `TO_BE_DETERMINED`. Send
+          `false` to resolve without booking a return shipping label (the RMA is still generated).
+        - For `EXCHANGE`, `exchange_products` lists the replacement items (resolved against your
+          store catalog, not the order) and their stock is reserved right away, to ship once the
+          return arrives.
+        - Return-level blockers (order not shipped, return already exists) are reported before
+          item-level errors.
+        - If the return is created but the immediate resolution fails (for example the carrier
+          rejects the label), the return stays `PENDING` / `TO_BE_DETERMINED` and the error is
+          returned; fetch it with `GET /returns/{return_id}` before retrying, since a second call
+          would answer `RETURN_ALREADY_EXISTS`.
+        - Your API credentials need the permission to create returns;
+          ask Cubbo support if the call answers 401 with a valid token.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReturnCreateRequest'
+            examples:
+              toBeDetermined:
+                summary: Request a return to be reviewed later
+                value:
+                  store_id: 1234
+                  order_number: "ORD-0001"
+                  notes: "Customer changed their mind"
+                  products:
+                    - sku: "SKU-RED-M"
+                      quantity: 1
+              simpleReturnWithLabel:
+                summary: Resolve immediately as a simple return with a prepaid label
+                value:
+                  store_id: 1234
+                  order_number: "ORD-0001"
+                  notes: "Wrong size"
+                  return_type: SIMPLE_RETURN
+                  generate_guide: true
+                  products:
+                    - sku: "SKU-RED-M"
+                      quantity: 1
+              exchange:
+                summary: Resolve immediately as an exchange
+                value:
+                  store_id: 1234
+                  order_number: "ORD-0001"
+                  notes: "Wants size L instead of M"
+                  return_type: EXCHANGE
+                  generate_guide: true
+                  products:
+                    - sku: "SKU-RED-M"
+                      quantity: 1
+                  exchange_products:
+                    - sku: "SKU-RED-L"
+                      quantity: 1
+      responses:
+        '201':
+          description: Return created. Only the listed fields are returned; `exchange_products` is present only for `EXCHANGE` returns.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnCreated'
+              examples:
+                toBeDetermined:
+                  value:
+                    id: 98765
+                    status: PENDING
+                    return_type: TO_BE_DETERMINED
+                    notes: "Customer changed their mind"
+                    externally_requested: true
+                    expected_products:
+                      - product_id: 5551
+                        quantity: 1
+                        skus: ["SKU-RED-M"]
+                    created_at: "2026-10-12T15:04:05.123Z"
+                    order_number: "ORD-0001"
+                exchange:
+                  value:
+                    id: 98766
+                    status: REQUESTED
+                    return_type: EXCHANGE
+                    notes: "Wants size L instead of M"
+                    externally_requested: true
+                    expected_products:
+                      - product_id: 5551
+                        quantity: 1
+                        skus: ["SKU-RED-M"]
+                    exchange_products:
+                      - product_id: 5552
+                        quantity: 1
+                        skus: ["SKU-RED-L"]
+                    created_at: "2026-10-12T15:04:05.123Z"
+                    order_number: "ORD-0001"
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409':
+          description: Another return request for the same order is still being processed. Retry after a moment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnError'
+              example:
+                error: "a return request for this order is already in progress"
+                code: RETURN_REQUEST_IN_FLIGHT
+        '422':
+          description: |
+            Validation or business error. `code` is a stable machine-readable identifier (`null` for
+            parameter validation errors); `context` carries the offending `sku` when relevant.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnError'
+              examples:
+                missingParam:
+                  value: {error: "Parameter store_id is required", code: null, context: null}
+                missingGenerateGuide:
+                  summary: return_type given without generate_guide
+                  value: {error: "Parameter generate_guide is required", code: null, context: null}
+                invalidReturnType:
+                  summary: return_type outside the accepted values (e.g. IMMEDIATE_EXCHANGE)
+                  value: {error: "Parameter return_type must be within [\"TO_BE_DETERMINED\", \"SIMPLE_RETURN\", \"EXCHANGE\"]", code: null, context: null}
+                storeNotFound:
+                  value: {error: "store 1234 not found", code: STORE_NOT_FOUND, context: null}
+                orderNotFound:
+                  value: {error: "order ORD-0001 not found", code: ORDER_NOT_FOUND, context: null}
+                returnAlreadyExists:
+                  value: {error: "order already has an active return", code: RETURN_ALREADY_EXISTS}
+                orderNotShipped:
+                  value: {error: "only shipped orders can be returned", code: ORDER_NOT_SHIPPED}
+                pickAndShipNotSupported:
+                  value: {error: "pick and ship orders cannot be returned this way", code: PICK_AND_SHIP_NOT_SUPPORTED}
+                invalidSku:
+                  value: {error: "sku SKU-BLUE-S is not part of order ORD-0001", code: INVALID_SKU, context: {sku: "SKU-BLUE-S"}}
+                invalidExchangeSku:
+                  value: {error: "sku SKU-BLUE-S is not a product in the store", code: INVALID_SKU, context: {sku: "SKU-BLUE-S"}}
+                ambiguousSku:
+                  value: {error: "sku SKU-RED-M maps to more than one product on order ORD-0001", code: AMBIGUOUS_SKU, context: {sku: "SKU-RED-M"}}
+                kitNotSupported:
+                  value: {error: "sku KIT-001 is a kit and cannot be returned", code: KIT_NOT_SUPPORTED, context: {sku: "KIT-001"}}
+                invalidQuantity:
+                  value: {error: "quantity 3 for sku SKU-RED-M exceeds the ordered quantity 1", code: INVALID_QUANTITY, context: {sku: "SKU-RED-M", ordered_quantity: 1}}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /returns/{return_id}:
+    get:
+      tags: [Returns]
+      operationId: getReturn
+      summary: Get a return
+      description: |
+        Returns the current state of one return of your store: its status and type, what the customer
+        declared is coming back (`expected_products`), and the products of the original order that can
+        be received (`return_products`). Use it to follow a return after creating it, or to check a
+        return reported on an order (`returned_order_id` / `returned_order_number`).
+
+        - For products tracked by unit code (IMEI or serial number), each `return_products` entry
+          also lists the `unit_codes` that shipped on the original order. Products that do not track
+          unit codes never carry that key.
+        - A return that does not exist or does not belong to one of your stores answers 404.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: return_id
+          in: path
+          required: true
+          description: Numeric id of the return, as returned when it was created or on the order.
+          schema:
+            type: integer
+          example: 98765
+      responses:
+        '200':
+          description: The return.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnDetail'
+              example:
+                id: 98765
+                status: PENDING
+                return_type: TO_BE_DETERMINED
+                resolved_at: null
+                notes: "Customer changed their mind"
+                expected_products:
+                  - product_id: 5551
+                    quantity: 1
+                    skus: ["SKU-RED-M"]
+                return_products:
+                  - product_id: 5551
+                    name: "Red T-shirt M"
+                    barcode: "7501234567890"
+                    quantity: 1
+                    skus: ["SKU-RED-M"]
+                    image_url: "/rails/active_storage/blobs/redirect/abc123/red-tshirt.png"
+                  - product_id: 5560
+                    name: "Smartphone 128GB"
+                    barcode: "7509876543210"
+                    quantity: 1
+                    skus: ["PHONE-BLK-128"]
+                    image_url: null
+                    unit_codes: ["IMEI-000000000000001"]
+                returned_order_id: 445566
+                returned_order_number: "ORD-0001"
+                created_at: "2026-10-12T15:04:05.123Z"
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404':
+          description: No return with that id in your stores.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "no return found with return_id 98765"
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /returns/{return_id}/cancel:
+    patch:
+      tags: [Returns]
+      operationId: cancelReturn
+      summary: Cancel a pending return
+      description: |
+        Cancels a return that is still `PENDING` (not yet resolved or received). Any stock reserved
+        for the return (for example replacement items of an exchange, or units of a return by
+        carrier) is released back to available inventory. Cancelling is a resolution of the return:
+        your API credentials need the permission to resolve returns.
+
+        - Only `PENDING` returns can be cancelled; any other status answers 422 `RETURN_NOT_CANCELABLE`.
+        - The request body is empty.
+        - After cancellation the order can receive a new return request.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: return_id
+          in: path
+          required: true
+          description: Numeric id of the return.
+          schema:
+            type: integer
+          example: 98765
+      responses:
+        '200':
+          description: The return, now cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnCancelled'
+              example:
+                id: 98765
+                status: CANCELLED
+                return_type: TO_BE_DETERMINED
+                resolved_at: "2026-10-12T16:00:00.000Z"
+                created_at: "2026-10-12T15:04:05.123Z"
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404':
+          description: No return with that id in your stores.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "no return found with return_id 98765"
+        '409':
+          description: Another cancel for the same return is still being processed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnError'
+              example:
+                error: "a cancel for this return is already in progress"
+                code: CANCEL_IN_FLIGHT
+        '422':
+          description: The return cannot be cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnError'
+              examples:
+                notCancelable:
+                  value: {error: "return 98765 is not pending and cannot be cancelled", code: RETURN_NOT_CANCELABLE}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /returns/{return_id}/decision:
+    post:
+      tags: [Returns]
+      operationId: decideReturn
+      summary: Decide what to do with an order returned by the carrier
+      description: |
+        When a carrier cannot deliver an order and brings it back, Cubbo creates a return of type
+        `RETURNED_BY_CARRIER` in status `PENDING` and waits for a decision. Use this endpoint to take
+        that decision:
+
+        - `resend`: Cubbo duplicates the original order into a new order (same items, same shipping
+          data, cash-on-delivery and document/pickup requirements carried over), assigns the units
+          reserved by the return to it and ships it again. The return moves to `ORDERED` and the new
+          order is returned in `created_order`. Answers 201.
+        - `cancel_forward`: the order is not resent. The reserved units are released back to
+          available inventory and the return moves to `CANCELLED`. Answers 200.
+
+        Only a `PENDING` return of type `RETURNED_BY_CARRIER` can be decided; anything else answers
+        422 `RETURN_NOT_DECIDABLE`. Your API credentials need the permission to resolve returns.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: return_id
+          in: path
+          required: true
+          description: Numeric id of the return.
+          schema:
+            type: integer
+          example: 98765
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReturnDecisionRequest'
+            examples:
+              resend:
+                value: {decision: resend}
+              cancelForward:
+                value: {decision: cancel_forward}
+      responses:
+        '200':
+          description: Decision `cancel_forward` applied; the return is cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnDecisionCancelForwardResult'
+              example:
+                decision: cancel_forward
+                return_id: 98765
+                return_status: CANCELLED
+        '201':
+          description: Decision `resend` applied; a new order was created from the returned one.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnDecisionResendResult'
+              example:
+                decision: resend
+                return_id: 98765
+                return_status: ORDERED
+                created_order:
+                  id: 445577
+                  order_number: "ORD-0001_RC"
+                  status: pending
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404':
+          description: No return with that id in your stores.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "no return found with return_id 98765"
+        '409':
+          description: Another decision for the same return is still being processed (or Cubbo is resolving it internally).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnError'
+              example:
+                error: "a decision for this return is already in progress"
+                code: DECISION_IN_FLIGHT
+        '422':
+          description: Validation or business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnError'
+              examples:
+                invalidDecision:
+                  value: {error: "Parameter decision must be within [\"resend\", \"cancel_forward\"]", code: null}
+                missingDecision:
+                  value: {error: "Parameter decision is required", code: null}
+                notDecidable:
+                  value: {error: "return 98765 is not a pending returned-by-carrier return and cannot be decided", code: RETURN_NOT_DECIDABLE}
+                notCancelable:
+                  summary: cancel_forward raced with a concurrent cancellation
+                  value: {error: "return 98765 is not pending and cannot be cancelled", code: RETURN_NOT_CANCELABLE}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /returns/awaiting-invoice:
+    get:
+      tags: [Returns]
+      operationId: listReturnsAwaitingInvoice
+      summary: List returns that still need an inbound NF-e (Brazil)
+      description: |
+        Brazil only. In Brazil, goods entering Cubbo's warehouse must be covered by an electronic
+        invoice (NF-e, *Nota Fiscal Eletrônica*). When a returned order is received and is being put
+        away, your store must issue the inbound NF-e for the return (and, when applicable, for the
+        stock re-entry) and attach it with `POST /returns/{return_id}/attach-invoice`. This endpoint
+        lists the returns of a store that are waiting for that document, newest first, so you can
+        poll it and issue the missing invoices.
+
+        A return is listed when all of the following hold:
+        - its received stock is being put away (the reception has reached the put-away stage),
+        - the original order has an approved sale (or donation) NF-e, whose access key is given in
+          `related_sale_invoice` so you can reference it on the inbound invoice, and
+        - it is still missing an approved, processing, contingency or pre-approved NF-e for either
+          the return itself or its stock re-entry.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: store_id
+          in: query
+          required: true
+          description: Id of the store whose returns you want to list.
+          schema:
+            type: integer
+          example: 1234
+        - name: page
+          in: query
+          required: false
+          description: Page number, starting at 1.
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          example: 1
+        - name: per_page
+          in: query
+          required: false
+          description: Results per page, at most 100.
+          schema:
+            type: integer
+            maximum: 100
+            default: 10
+          example: 10
+      responses:
+        '200':
+          description: Paginated list of returns awaiting an inbound NF-e.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  returns:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReturnAwaitingInvoice'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+              example:
+                returns:
+                  - id: 98765
+                    return_type: RETURNED_BY_CARRIER
+                    replenishment_id: 77001
+                    related_sale_invoice:
+                      invoice_key: "00000000000000000000000000000000000000000000"
+                    returned_order:
+                      id: 445566
+                      channel_order_id: "1000123"
+                      order_number: "ORD-0001"
+                      integration_details:
+                        marketplace: "MERCADOLIBRE"
+                meta:
+                  current_page: 1
+                  next_page: null
+                  prev_page: null
+                  total_pages: 1
+                  first_page: true
+                  last_page: true
+                  per_page: 10
+                  total_count: 1
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missingStore:
+                  value: {error: "Parameter store_id is required"}
+                storeNotFound:
+                  value: {error: "Couldn't find Store with 'id'=1234"}
+                perPageTooLarge:
+                  value: {error: "Parameter per_page cannot be greater than 100"}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /returns/{return_id}/attach-invoice:
+    post:
+      tags: [Returns]
+      operationId: attachReturnInvoice
+      summary: Register the inbound NF-e issued for a return (Brazil)
+      description: |
+        Brazil only, for stores whose NF-e are issued through Cubbo's fiscal provider. After your
+        store issues the inbound NF-e (*Nota Fiscal Eletrônica de entrada*) for a returned order, call
+        this endpoint with the invoice references so Cubbo can link them to the return and fetch the
+        authorized document. Each item is linked according to its `purpose`:
+
+        - `RETURN_INVOICE`: the NF-e that documents the goods coming back from the customer; linked
+          to the return.
+        - `REPLENISHMENT_INVOICE`: the NF-e that documents the stock re-entering the warehouse;
+          linked to the return's stock re-entry (`replenishment_id` in the awaiting-invoice list).
+
+        Behaviors:
+        - The return's stock re-entry must be in the put-away stage (the same condition that lists
+          it under `GET /returns/awaiting-invoice`); otherwise 422.
+        - If every `key` you send is already registered, nothing is created: Cubbo re-syncs the
+          existing invoices and answers 200 with `new_invoice_ids: []` and the matched keys in
+          `update_invoice_ids`.
+        - An `identifier` that is already used by a non-cancelled invoice is rejected (422). You
+          may reuse an identifier whose previous invoice was cancelled.
+        - Duplicate keys or identifiers within the same request are rejected (422).
+        - Invoices are stored as pre-approved and confirmed asynchronously with the fiscal provider.
+        - Your API credentials need the permission to update orders.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: return_id
+          in: path
+          required: true
+          description: Numeric id of the return.
+          schema:
+            type: integer
+          example: 98765
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReturnAttachInvoiceRequest'
+            example:
+              invoices:
+                - key: "00000000000000000000000000000000000000000000"
+                  identifier: "RET-98765-M"
+                  purpose: RETURN_INVOICE
+                  operation_type: ENTRADA
+                  operation_nature: "Retorno de mercadoria nao entregue"
+                  total_value: "116.56"
+      responses:
+        '200':
+          description: Invoices registered (or already present and re-synced).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnAttachInvoiceResult'
+              examples:
+                created:
+                  value:
+                    new_invoice_ids: [880001]
+                alreadyRegistered:
+                  value:
+                    new_invoice_ids: []
+                    update_invoice_ids: "00000000000000000000000000000000000000000000"
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: Validation or business error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missingInvoices:
+                  value: {error: "Parameter invoices is required"}
+                badKey:
+                  value: {error: "Parameter key must contain numbers only"}
+                badPurpose:
+                  value: {error: "Parameter purpose must be within [\"RETURN_INVOICE\", \"REPLENISHMENT_INVOICE\"]"}
+                badOperationType:
+                  value: {error: "Parameter operation_type must be within [\"ENTRADA\"]"}
+                unsupportedInvoiceType:
+                  value: {error: "only WEBMANIA is supported for now"}
+                returnNotFound:
+                  value: {error: "Couldn't find Return with 'id'=98765"}
+                notInPutaway:
+                  value: {error: "replenishment id 77001 of return id 98765 is not in putaway status, status is RECEIVED"}
+                duplicateIdentifiers:
+                  value: {error: "duplicate invoice identifiers provided: [\"RET-98765-M\"]"}
+                duplicateKeys:
+                  value: {error: "duplicate invoice keys provided: [\"00000000000000000000000000000000000000000000\"]"}
+                identifierExists:
+                  value: {error: "some identifiers provided already exist: [\"RET-98765-M\"]"}
+                providerError:
+                  value: {error: "WebmaniaError: <provider message>"}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /returns/attach-external-invoice:
+    post:
+      tags: [Returns]
+      operationId: attachReturnExternalInvoice
+      summary: Upload an inbound NF-e issued outside Cubbo for a return (Brazil)
+      description: |
+        Brazil only, for stores that issue their own NF-e (Cubbo does not issue the return invoice for
+        the store). Sends the authorized NF-e XML of the inbound return invoice so Cubbo stores it on
+        the return, renders the DANFE and uses it for the reception of the goods.
+
+        - The return must belong to one of your stores and be eligible: the store issues its own
+          invoices, the returned order ships from a Brazil warehouse, and the return does not carry an
+          invoice yet. Otherwise 422 `RETURN_NOT_ELIGIBLE_FOR_INVOICE`.
+        - `invoice_xml` must be the authorized, protocol-wrapped NF-e (`nfeProc`), either as raw
+          XML or base64-encoded. The access key embedded in the XML must match `access_key`.
+        - The call is idempotent for a return that already has an approved return NF-e: the existing
+          invoice is returned. A different key that already exists elsewhere is rejected.
+        - If another upload for the same return is still in progress the call answers 202; retry
+          after a moment.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReturnAttachExternalInvoiceRequest'
+            example:
+              return_id: 98765
+              access_key: "00000000000000000000000000000000000000000000"
+              invoice_number: "123"
+              invoice_xml: "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPG5mZVByb2MgLi4uPg=="
+              message: "Return NF-e for order ORD-0001"
+      responses:
+        '200':
+          description: Invoice stored on the return (or the existing approved one).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnExternalInvoiceResult'
+              example:
+                invoice_id: 880002
+                key: "00000000000000000000000000000000000000000000"
+                status: APPROVED
+        '202':
+          description: Another upload for this return is still being processed; nothing was stored by this call.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    description: Human-readable explanation.
+                    example: "Accepted, another invoice attach for this return is still processing."
+                  transaction_id:
+                    type: string
+                    description: Identifier of the in-flight operation, for support.
+                    example: "0f1e2d3c"
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422':
+          description: Validation or business error. The return not existing, or not belonging to your stores, also answers 422.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missingXml:
+                  value: {error: "Parameter invoice_xml is required"}
+                badAccessKey:
+                  value: {error: "Parameter access_key must be the 44-digit NF-e access key"}
+                returnNotFound:
+                  value: {error: "no return found with return_id 98765"}
+                notEligible:
+                  value: {error: "return 98765 is not eligible for an external invoice"}
+                keyMismatch:
+                  value: {error: "access_key does not match the NF-e XML"}
+                keyExists:
+                  value: {error: "an invoice with key 00000000000000000000000000000000000000000000 already exists"}
+                notAuthorizedXml:
+                  value: {error: "invoice_xml must be an authorized NF-e (nfeProc/NFe/infNFe not found)"}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+components:
+  schemas:
+    ReturnStatus:
+      type: string
+      description: |
+        Lifecycle status of a return.
+        - `PENDING`: created and waiting for a decision (review of a customer request, or decision on an order returned by the carrier).
+        - `REQUESTED`: resolved; the customer has the return instructions and the goods are expected back.
+        - `ORDERED`: resolved by creating a new (replacement or resend) order.
+        - `CANCELLED`: cancelled before the goods came back; reserved stock was released.
+        - `ARRIVED_AT_WAREHOUSE`: the package arrived at the warehouse and is waiting to be processed.
+        - `AWAITING_INSPECTION`: the package was opened and is waiting for inspection of its contents.
+        - `RECEIVED`: the goods were checked in and are being re-entered into inventory.
+        - `REENTERED`: the goods were fully re-entered into inventory; the return is complete.
+        - `UNSUCCESSFUL`: closed without receiving anything; every expected product was missing on reception.
+      enum:
+        - PENDING
+        - REQUESTED
+        - ORDERED
+        - CANCELLED
+        - ARRIVED_AT_WAREHOUSE
+        - AWAITING_INSPECTION
+        - RECEIVED
+        - REENTERED
+        - UNSUCCESSFUL
+      example: PENDING
+
+    ReturnType:
+      type: string
+      description: |
+        What kind of return this is.
+        - `TO_BE_DETERMINED`: requested by the customer or by you, not yet reviewed; the outcome (simple return, exchange, rejection) is decided later.
+        - `SIMPLE_RETURN`: the customer sends the goods back; no replacement is shipped.
+        - `EXCHANGE`: the customer sends the goods back and replacement items (`exchange_products`) are reserved to ship once the return arrives.
+        - `IMMEDIATE_EXCHANGE`: replacement items ship right away, before the return arrives (created from the Cubbo app, not through this API).
+        - `RETURNED_BY_CARRIER`: the carrier could not deliver the order and brought it back; decide it with `POST /returns/{return_id}/decision`.
+        - `UNIDENTIFIED`: a package arrived at the warehouse that could not be matched to an order (created by warehouse staff).
+      enum:
+        - TO_BE_DETERMINED
+        - SIMPLE_RETURN
+        - EXCHANGE
+        - IMMEDIATE_EXCHANGE
+        - RETURNED_BY_CARRIER
+        - UNIDENTIFIED
+      example: TO_BE_DETERMINED
+
+    ReturnProduct:
+      type: object
+      description: A product and quantity declared on a return (expected back, or to be shipped as a replacement).
+      required: [product_id, quantity]
+      properties:
+        product_id:
+          type: integer
+          description: Cubbo id of the product.
+          example: 5551
+        quantity:
+          type: integer
+          description: Number of units.
+          example: 1
+        skus:
+          type: array
+          description: SKUs of the product in your store. Present on the returns endpoints; absent when the return is embedded in an order.
+          items:
+            type: string
+          example: ["SKU-RED-M"]
+
+    ReturnLine:
+      type: object
+      description: A product of the original order that can be received as part of the return (kits are expanded into their components; non-scannable and dropshipping products are omitted).
+      required: [product_id, name, barcode, quantity, skus, image_url]
+      properties:
+        product_id:
+          type: integer
+          description: Cubbo id of the product.
+          example: 5551
+        name:
+          type: string
+          description: Product name.
+          example: "Red T-shirt M"
+        barcode:
+          type: [string, 'null']
+          description: Product barcode (UPC/EAN).
+          example: "7501234567890"
+        quantity:
+          type: integer
+          description: Quantity of this product on the original order.
+          example: 1
+        skus:
+          type: array
+          description: SKUs of the product in your store.
+          items:
+            type: string
+          example: ["SKU-RED-M"]
+        image_url:
+          type: [string, 'null']
+          description: Relative path of the product image, or null when the product has none.
+          example: "/rails/active_storage/blobs/redirect/abc123/red-tshirt.png"
+        unit_codes:
+          type: array
+          description: Unit codes (IMEI / serial numbers) that shipped on the original order. Only present for products tracked by unit code.
+          items:
+            type: string
+          example: ["IMEI-000000000000001"]
+
+    Return:
+      type: object
+      description: |
+        A return of an order. This is the full client-facing shape; each endpoint returns a subset of
+        these fields (see each response). When embedded in an order (`return` on an `Order`), only
+        `id`, `status`, `notes`, `return_type`, `created_at` and `expected_products` (without `skus`)
+        are present.
+      properties:
+        id:
+          type: integer
+          description: Unique id of the return.
+          example: 98765
+        status:
+          $ref: '#/components/schemas/ReturnStatus'
+        return_type:
+          $ref: '#/components/schemas/ReturnType'
+        notes:
+          type: [string, 'null']
+          description: Reason or comments given when the return was requested.
+          example: "Customer changed their mind"
+        resolved_at:
+          type: [string, 'null']
+          format: date-time
+          description: When the return was resolved (resolved into a type, cancelled, or turned into an order); null while pending.
+          example: "2026-10-12T16:00:00.000Z"
+        created_at:
+          type: string
+          format: date-time
+          description: When the return was created.
+          example: "2026-10-12T15:04:05.123Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: When the return was last updated.
+          example: "2026-10-12T16:00:00.000Z"
+        expected_products:
+          type: [array, 'null']
+          description: Products and quantities declared as coming back.
+          items:
+            $ref: '#/components/schemas/ReturnProduct'
+        exchange_products:
+          type: [array, 'null']
+          description: Replacement products to ship once the return arrives. Only present for `EXCHANGE` returns.
+          items:
+            $ref: '#/components/schemas/ReturnProduct'
+        externally_requested:
+          type: boolean
+          description: True when the return was requested through the API or the customer-facing returns page rather than created by Cubbo staff.
+          example: true
+        returned_order_id:
+          type: [integer, 'null']
+          description: Id of the order being returned.
+          example: 445566
+        created_order_id:
+          type: [integer, 'null']
+          description: Id of the order created from this return (replacement or resend), if any.
+          example: null
+        replenishment_id:
+          type: [integer, 'null']
+          description: Id of the stock re-entry created when the goods were received, if any.
+          example: null
+        reserved_stock_units_count:
+          type: integer
+          description: Number of inventory units reserved for this return (replacement items or units of an order returned by the carrier).
+          example: 0
+        return_products:
+          type: array
+          description: Products of the original order that can be received as part of this return.
+          items:
+            $ref: '#/components/schemas/ReturnLine'
+        rma_file:
+          type: [object, 'null']
+          description: The return instructions document (RMA) generated when the return was resolved, if any.
+          properties:
+            path:
+              type: string
+              description: Relative download path of the PDF.
+              example: "/rails/active_storage/blobs/redirect/def456/rma_ORD-0001.pdf"
+            filename:
+              type: string
+              description: File name.
+              example: "rma_ORD-0001.pdf"
+            byte_size:
+              type: integer
+              description: Size in bytes.
+              example: 48213
+            content_type:
+              type: string
+              description: MIME type; always `application/pdf`.
+              example: "application/pdf"
+        can_attach_invoice:
+          type: boolean
+          description: Brazil only. True when the store issues its own NF-e, the order ships from a Brazil warehouse and the return has no invoice yet.
+          example: false
+
+    ReturnCreated:
+      type: object
+      description: Response of `POST /returns`.
+      required: [id, status, return_type, notes, externally_requested, expected_products, created_at, order_number]
+      properties:
+        id:
+          type: integer
+          description: Unique id of the return. Use it with the other returns endpoints.
+          example: 98765
+        status:
+          $ref: '#/components/schemas/ReturnStatus'
+        return_type:
+          $ref: '#/components/schemas/ReturnType'
+        notes:
+          type: string
+          description: The notes you sent.
+          example: "Customer changed their mind"
+        externally_requested:
+          type: boolean
+          description: Always true for returns created through the API.
+          example: true
+        expected_products:
+          type: array
+          description: Resolved products and quantities coming back, with their SKUs.
+          items:
+            $ref: '#/components/schemas/ReturnProduct'
+        exchange_products:
+          type: array
+          description: Replacement products with their SKUs. Only present for `EXCHANGE` returns.
+          items:
+            $ref: '#/components/schemas/ReturnProduct'
+        created_at:
+          type: string
+          format: date-time
+          description: When the return was created.
+          example: "2026-10-12T15:04:05.123Z"
+        order_number:
+          type: string
+          description: The order number you sent.
+          example: "ORD-0001"
+
+    ReturnDetail:
+      type: object
+      description: Response of `GET /returns/{return_id}`.
+      required: [id, status, return_type, resolved_at, notes, expected_products, return_products, returned_order_id, returned_order_number, created_at]
+      properties:
+        id:
+          type: integer
+          description: Unique id of the return.
+          example: 98765
+        status:
+          $ref: '#/components/schemas/ReturnStatus'
+        return_type:
+          $ref: '#/components/schemas/ReturnType'
+        resolved_at:
+          type: [string, 'null']
+          format: date-time
+          description: When the return was resolved; null while pending.
+          example: null
+        notes:
+          type: [string, 'null']
+          description: Reason or comments given when the return was requested.
+          example: "Customer changed their mind"
+        expected_products:
+          type: [array, 'null']
+          description: Products and quantities declared as coming back, with their SKUs.
+          items:
+            $ref: '#/components/schemas/ReturnProduct'
+        return_products:
+          type: array
+          description: Products of the original order that can be received as part of this return.
+          items:
+            $ref: '#/components/schemas/ReturnLine'
+        returned_order_id:
+          type: [integer, 'null']
+          description: Id of the order being returned.
+          example: 445566
+        returned_order_number:
+          type: [string, 'null']
+          description: Order number of the order being returned.
+          example: "ORD-0001"
+        created_at:
+          type: string
+          format: date-time
+          description: When the return was created.
+          example: "2026-10-12T15:04:05.123Z"
+
+    ReturnCancelled:
+      type: object
+      description: Response of `PATCH /returns/{return_id}/cancel`.
+      required: [id, status, return_type, resolved_at, created_at]
+      properties:
+        id:
+          type: integer
+          description: Unique id of the return.
+          example: 98765
+        status:
+          $ref: '#/components/schemas/ReturnStatus'
+        return_type:
+          $ref: '#/components/schemas/ReturnType'
+        resolved_at:
+          type: string
+          format: date-time
+          description: When the return was cancelled.
+          example: "2026-10-12T16:00:00.000Z"
+        created_at:
+          type: string
+          format: date-time
+          description: When the return was created.
+          example: "2026-10-12T15:04:05.123Z"
+
+    ReturnCreateRequest:
+      type: object
+      required: [store_id, order_number, notes]
+      properties:
+        store_id:
+          type: integer
+          description: Id of the store that owns the order.
+          example: 1234
+        order_number:
+          type: string
+          description: Order number of the shipped order to return.
+          example: "ORD-0001"
+        notes:
+          type: string
+          description: Reason for the return or any comment to keep with it. Shown on the return instructions sent to the customer when the return is resolved.
+          example: "Customer changed their mind"
+        products:
+          type: array
+          description: Items coming back, by SKU. Omit or send an empty array for a full return of every ordered item at its full quantity. Repeated SKUs are summed. Each SKU must be on the order, map to a single product and not be a kit; the quantity cannot exceed the ordered quantity.
+          items:
+            $ref: '#/components/schemas/ReturnRequestItem'
+        return_type:
+          type: string
+          description: Outcome of the return. `TO_BE_DETERMINED` (default) creates a pending request to be reviewed later. `SIMPLE_RETURN` and `EXCHANGE` resolve the return immediately (order moves to `returning`, return instructions are emailed to the customer).
+          enum: [TO_BE_DETERMINED, SIMPLE_RETURN, EXCHANGE]
+          default: TO_BE_DETERMINED
+          example: TO_BE_DETERMINED
+        generate_guide:
+          type: boolean
+          description: Required when `return_type` is `SIMPLE_RETURN` or `EXCHANGE`; ignored otherwise. `true` books a prepaid return shipping label with the carrier and attaches it to the return instructions; `false` resolves the return without a label.
+          example: true
+        exchange_products:
+          type: array
+          description: Required when `return_type` is `EXCHANGE`; ignored otherwise. Replacement items to ship once the return arrives, by SKU of your store catalog (kits not allowed). Their stock is reserved immediately.
+          items:
+            $ref: '#/components/schemas/ReturnRequestItem'
+
+    ReturnRequestItem:
+      type: object
+      required: [sku, quantity]
+      properties:
+        sku:
+          type: string
+          description: SKU of the product.
+          example: "SKU-RED-M"
+        quantity:
+          type: integer
+          minimum: 1
+          description: Number of units.
+          example: 1
+
+    ReturnDecisionRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          description: "`resend` creates a new order from the returned one and ships it again; `cancel_forward` cancels the return and releases its reserved stock."
+          enum: [resend, cancel_forward]
+          example: resend
+
+    ReturnDecisionResendResult:
+      type: object
+      required: [decision, return_id, return_status, created_order]
+      properties:
+        decision:
+          type: string
+          description: The applied decision.
+          enum: [resend]
+          example: resend
+        return_id:
+          type: integer
+          description: Id of the decided return.
+          example: 98765
+        return_status:
+          $ref: '#/components/schemas/ReturnStatus'
+        created_order:
+          type: object
+          description: The new order created from the returned one. Fetch it with the orders endpoints for full details.
+          required: [id, order_number, status]
+          properties:
+            id:
+              type: integer
+              description: Id of the new order.
+              example: 445577
+            order_number:
+              type: string
+              description: Order number of the new order; derived from the original order number with a return-by-carrier suffix.
+              example: "ORD-0001_RC"
+            status:
+              type: string
+              description: Initial status of the new order.
+              example: pending
+
+    ReturnDecisionCancelForwardResult:
+      type: object
+      required: [decision, return_id, return_status]
+      properties:
+        decision:
+          type: string
+          description: The applied decision.
+          enum: [cancel_forward]
+          example: cancel_forward
+        return_id:
+          type: integer
+          description: Id of the decided return.
+          example: 98765
+        return_status:
+          $ref: '#/components/schemas/ReturnStatus'
+
+    ReturnAwaitingInvoice:
+      type: object
+      description: A return that is waiting for its inbound NF-e.
+      required: [id, return_type, replenishment_id, related_sale_invoice, returned_order]
+      properties:
+        id:
+          type: integer
+          description: Id of the return; use it with `POST /returns/{return_id}/attach-invoice`.
+          example: 98765
+        return_type:
+          $ref: '#/components/schemas/ReturnType'
+        replenishment_id:
+          type: integer
+          description: Id of the stock re-entry (replenishment) created on reception; the `REPLENISHMENT_INVOICE` you attach is linked to it.
+          example: 77001
+        related_sale_invoice:
+          type: [object, 'null']
+          description: The approved sale (or donation) NF-e of the original order, to reference on the inbound invoice.
+          properties:
+            invoice_key:
+              type: string
+              description: 44-digit NF-e access key of the sale invoice.
+              example: "00000000000000000000000000000000000000000000"
+        returned_order:
+          type: [object, 'null']
+          description: Summary of the order being returned.
+          properties:
+            id:
+              type: integer
+              description: Id of the order.
+              example: 445566
+            channel_order_id:
+              type: [string, 'null']
+              description: Id of the order in the sales channel it came from.
+              example: "1000123"
+            order_number:
+              type: string
+              description: Order number.
+              example: "ORD-0001"
+            integration_details:
+              type: object
+              description: Sales-channel details.
+              properties:
+                marketplace:
+                  type: [string, 'null']
+                  description: Marketplace the order was placed on, when the channel reports it.
+                  example: "MERCADOLIBRE"
+
+    ReturnAttachInvoiceRequest:
+      type: object
+      required: [invoices]
+      properties:
+        invoice_type:
+          type: string
+          description: Fiscal provider the invoice was issued through. Only `WEBMANIA` is accepted today.
+          enum: [WEBMANIA]
+          default: WEBMANIA
+          example: WEBMANIA
+        invoices:
+          type: array
+          description: Invoices to link to the return. Keys and identifiers must be unique within the request.
+          minItems: 1
+          items:
+            type: object
+            required: [key, identifier, purpose, operation_type, operation_nature, total_value]
+            properties:
+              key:
+                type: string
+                description: 44-digit NF-e access key (digits only).
+                pattern: '^[0-9]{44}$'
+                example: "00000000000000000000000000000000000000000000"
+              identifier:
+                type: string
+                description: Your unique identifier for this invoice. Must not be in use by another non-cancelled invoice.
+                example: "RET-98765-M"
+              purpose:
+                type: string
+                description: "`RETURN_INVOICE` links the invoice to the return; `REPLENISHMENT_INVOICE` links it to the return's stock re-entry."
+                enum: [RETURN_INVOICE, REPLENISHMENT_INVOICE]
+                example: RETURN_INVOICE
+              operation_type:
+                type: string
+                description: NF-e operation type; inbound only.
+                enum: [ENTRADA]
+                example: ENTRADA
+              operation_nature:
+                type: string
+                description: Nature of the operation (*natureza da operação*) as printed on the NF-e.
+                example: "Retorno de mercadoria nao entregue"
+              total_value:
+                type: string
+                description: Total value of the invoice, as a decimal string.
+                example: "116.56"
+
+    ReturnAttachInvoiceResult:
+      type: object
+      required: [new_invoice_ids]
+      properties:
+        new_invoice_ids:
+          type: array
+          description: Ids of the invoices created by this call; empty when every key was already registered.
+          items:
+            type: integer
+          example: [880001]
+        update_invoice_ids:
+          type: string
+          description: Only present when nothing was created. Comma-separated access keys of the already-registered invoices that were re-synced.
+          example: "00000000000000000000000000000000000000000000"
+
+    ReturnAttachExternalInvoiceRequest:
+      type: object
+      required: [return_id, invoice_xml, access_key, invoice_number]
+      properties:
+        return_id:
+          type: integer
+          description: Id of the return the NF-e belongs to.
+          example: 98765
+        invoice_xml:
+          type: string
+          description: Authorized NF-e XML (`nfeProc`), raw or base64-encoded (a `data:` URI prefix is accepted).
+          example: "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPG5mZVByb2MgLi4uPg=="
+        access_key:
+          type: string
+          description: 44-digit NF-e access key; must match the key embedded in `invoice_xml`.
+          pattern: '^[0-9]{44}$'
+          example: "00000000000000000000000000000000000000000000"
+        invoice_number:
+          type: string
+          description: Invoice number (*número da NF-e*).
+          example: "123"
+        message:
+          type: string
+          description: Optional free-text note stored with the invoice.
+          example: "Return NF-e for order ORD-0001"
+        invoice_type:
+          type: string
+          description: Provider that relayed the NF-e. Only `IOTA` is accepted.
+          enum: [IOTA]
+          default: IOTA
+          example: IOTA
+
+    ReturnExternalInvoiceResult:
+      type: object
+      required: [invoice_id, key, status]
+      properties:
+        invoice_id:
+          type: integer
+          description: Id of the stored invoice.
+          example: 880002
+        key:
+          type: string
+          description: NF-e access key.
+          example: "00000000000000000000000000000000000000000000"
+        status:
+          type: string
+          description: Invoice status; `APPROVED` for an authorized NF-e.
+          example: APPROVED
+
+    ReturnError:
+      type: object
+      description: Error body of the create, cancel and decision endpoints, with a machine-readable `code`.
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable message.
+          example: "order already has an active return"
+        code:
+          type: [string, 'null']
+          description: Stable error code; null for parameter validation errors.
+          example: RETURN_ALREADY_EXISTS
+        context:
+          type: [object, 'null']
+          description: Extra details, when available (for example the offending `sku`). Only sent by `POST /returns`.
+          example: {sku: "SKU-RED-M"}
