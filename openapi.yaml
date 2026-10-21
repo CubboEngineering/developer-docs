@@ -1712,7 +1712,9 @@ components:
           description: >-
             Id of a Cubbo shipping method. Get it from `GET /shipping-methods/quote`: each option in the
             response has a `shipping_method_id`. Required unless `shipping_line_code` is sent. Coverage for
-            the destination zip code is checked synchronously.
+            the destination is checked synchronously: by zip code in Mexico, by comuna in Chile. In Chile a
+            comuna that cannot be identified does not refuse the order; it is created in `error` until the
+            comuna is corrected.
           example: 12
         shipping_line_code:
           type: string
@@ -2073,7 +2075,7 @@ components:
                 type: string
                 description: >-
                   Validation code, for example `NATIONAL_SHIPPING_METHOD_EXPECTED`, `MISSING_SHIPPING_FIELD`,
-                  `SHIPPING_METHOD_HAS_NO_COVERAGE`.
+                  `SHIPPING_METHOD_HAS_NO_COVERAGE`, `UNRECOGNIZED_CITY_OR_STATE`.
                 example: NATIONAL_SHIPPING_METHOD_EXPECTED
               additional_info:
                 type: object
@@ -4199,7 +4201,9 @@ components:
           description: >-
             Id of the shipping method to assign. Get it from `GET /shipping-methods/quote`
             (`shipping_method_id` of each option). It must be active and cover the (updated) shipping address;
-            an international method is refused for a destination inside the warehouse's country.
+            an international method is refused for a destination inside the warehouse's country. In Chile a
+            comuna that cannot be identified is not refused; the update is saved and the order waits in
+            `error` until the comuna is corrected.
           example: 77
         is_b2b:
           type:
@@ -9856,6 +9860,12 @@ paths:
           reject the whole request.
         - `zip_code` is mandatory when the warehouse is in Mexico (and Brazil); it is optional for
           Chile and Colombia.
+        - Chile: when the comuna in `shipping.city` and `shipping.province` cannot be identified (a
+          misspelling, or a province instead of a comuna), an order sent with `shipping_method_id` is
+          not refused. It is created and moves to `error` until you correct the comuna with
+          `PUT /orders/{id}` or in the Cubbo app, where the order shows the reason. An order that
+          ships on your own label (Blue Express EX, with the label attached) continues normally. A
+          comuna that is identified but not covered by the method is still refused with 422.
         - Duplicate protection: an `order_number` that already exists in the store answers 422 with
           code `ORDER_ALREADY_EXISTS` and the existing `order_id` in `context`. While another request
           for the same `store_id` + `order_number` is still being processed you get 409
@@ -10683,6 +10693,9 @@ paths:
         - When you change `shipping` without sending `shipping_method_id`, an order created through a
           sales-channel integration with a shipping-method mapping gets its shipping method re-evaluated
           during re-processing, unless the order ships on the marketplace's own label.
+        - Chile: when you send `shipping_method_id` and the comuna in the address cannot be identified,
+          the update is still saved with the rest of your changes. The order goes back to `error`
+          until the comuna is corrected.
         - A marketplace order that ships on the marketplace's own label can only move to another
           marketplace-label shipping method; the refusal carries the code
           `MARKETPLACE_WITH_EXTERNAL_GUIDE` so you can tell it apart from a fixable validation error.
@@ -12341,6 +12354,13 @@ paths:
                         additional_info: {}
                       - field: shipping_phone
                         code: MISSING_SHIPPING_FIELD
+                        additional_info: {}
+                unrecognizedComuna:
+                  summary: Chile, a comuna that cannot be identified (the order is not created)
+                  value:
+                    errors:
+                      - field: shipping_city
+                        code: UNRECOGNIZED_CITY_OR_STATE
                         additional_info: {}
         "500":
           description: Unexpected error (including carrier failures while buying the label).

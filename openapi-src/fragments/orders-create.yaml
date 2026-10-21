@@ -24,6 +24,12 @@ paths:
           reject the whole request.
         - `zip_code` is mandatory when the warehouse is in Mexico (and Brazil); it is optional for
           Chile and Colombia.
+        - Chile: when the comuna in `shipping.city` and `shipping.province` cannot be identified (a
+          misspelling, or a province instead of a comuna), an order sent with `shipping_method_id` is
+          not refused. It is created and moves to `error` until you correct the comuna with
+          `PUT /orders/{id}` or in the Cubbo app, where the order shows the reason. An order that
+          ships on your own label (Blue Express EX, with the label attached) continues normally. A
+          comuna that is identified but not covered by the method is still refused with 422.
         - Duplicate protection: an `order_number` that already exists in the store answers 422 with
           code `ORDER_ALREADY_EXISTS` and the existing `order_id` in `context`. While another request
           for the same `store_id` + `order_number` is still being processed you get 409
@@ -492,6 +498,13 @@ paths:
                       - field: "shipping_phone"
                         code: "MISSING_SHIPPING_FIELD"
                         additional_info: {}
+                unrecognizedComuna:
+                  summary: Chile, a comuna that cannot be identified (the order is not created)
+                  value:
+                    errors:
+                      - field: "shipping_city"
+                        code: "UNRECOGNIZED_CITY_OR_STATE"
+                        additional_info: {}
         '500':
           description: Unexpected error (including carrier failures while buying the label).
           content:
@@ -871,8 +884,9 @@ components:
           description: >-
             Id of a Cubbo shipping method. Get it from `GET /shipping-methods/quote`: each option in the response has a
             `shipping_method_id`. Required unless
-            `shipping_line_code` is sent. Coverage for the destination zip code is checked
-            synchronously.
+            `shipping_line_code` is sent. Coverage for the destination is checked synchronously: by zip
+            code in Mexico, by comuna in Chile. In Chile a comuna that cannot be identified does not
+            refuse the order; it is created in `error` until the comuna is corrected.
           example: 12
         shipping_line_code:
           type: string
@@ -1200,7 +1214,7 @@ components:
                 example: "shipping_method"
               code:
                 type: string
-                description: Validation code, for example `NATIONAL_SHIPPING_METHOD_EXPECTED`, `MISSING_SHIPPING_FIELD`, `SHIPPING_METHOD_HAS_NO_COVERAGE`.
+                description: Validation code, for example `NATIONAL_SHIPPING_METHOD_EXPECTED`, `MISSING_SHIPPING_FIELD`, `SHIPPING_METHOD_HAS_NO_COVERAGE`, `UNRECOGNIZED_CITY_OR_STATE`.
                 example: "NATIONAL_SHIPPING_METHOD_EXPECTED"
               additional_info:
                 type: object

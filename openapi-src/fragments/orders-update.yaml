@@ -25,6 +25,9 @@ paths:
         - When you change `shipping` without sending `shipping_method_id`, an order created through a
           sales-channel integration with a shipping-method mapping gets its shipping method re-evaluated
           during re-processing, unless the order ships on the marketplace's own label.
+        - Chile: when you send `shipping_method_id` and the comuna in the address cannot be identified,
+          the update is still saved with the rest of your changes. The order goes back to `error`
+          until the comuna is corrected.
         - A marketplace order that ships on the marketplace's own label can only move to another
           marketplace-label shipping method; the refusal carries the code
           `MARKETPLACE_WITH_EXTERNAL_GUIDE` so you can tell it apart from a fixable validation error.
@@ -513,7 +516,7 @@ components:
           example: true
         shipping_method_id:
           type: [integer, 'null']
-          description: Id of the shipping method to assign. Get it from `GET /shipping-methods/quote` (`shipping_method_id` of each option). It must be active and cover the (updated) shipping address; an international method is refused for a destination inside the warehouse's country.
+          description: Id of the shipping method to assign. Get it from `GET /shipping-methods/quote` (`shipping_method_id` of each option). It must be active and cover the (updated) shipping address; an international method is refused for a destination inside the warehouse's country. In Chile a comuna that cannot be identified is not refused; the update is saved and the order waits in `error` until the comuna is corrected.
           example: 77
         is_b2b:
           type: [boolean, 'null']
