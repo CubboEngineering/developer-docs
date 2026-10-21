@@ -11153,9 +11153,9 @@ paths:
         - Accepted file types: PDF, PNG and JPEG, each under 5 MB. `metadata` is free-form JSON of at
           most 10 KB.
         - At least one document is required.
-        - Requires an API user with the "orders update" permission and access to the store. Note that
-          a permission failure inside this action is currently answered with `500 unexpected error`
-          rather than `401`.
+        - Requires an API user with the "orders update" permission and access to the order's store;
+          otherwise `401`. Unlike `PUT` and `PATCH /orders/{id}`, an order closed to edits by its
+          fiscal documents or its store's configuration is also answered with `401`, without a `code`.
       security:
         - bearerAuth: []
       parameters:
@@ -11213,7 +11213,7 @@ paths:
         "500":
           description: >-
             Unexpected error. Also returned when a file is rejected (unsupported type, over 5 MB, metadata
-            over 10 KB) or when the API user lacks permission on this order.
+            over 10 KB).
           content:
             application/json:
               schema:
