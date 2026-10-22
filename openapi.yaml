@@ -9912,7 +9912,9 @@ paths:
         - A line sent without `price_per_item` takes the product's price. On a line whose SKU is
           unknown there is no product price yet, so the line counts as zero in the order total, and so
           does its discount; once the product exists, the line takes the product's price and the
-          order total is recomputed. A product price smaller than the line's discount is not taken.
+          order total is recomputed (a kit without its own price is worth its components). A product
+          price smaller than the line's discount is not taken. Discounts larger than what the
+          products are worth are rejected with 422 `INVALID_PRODUCT_DISCOUNT`.
         - A `unit_code` sent on a line whose SKU is unknown is kept. The line must still have
           `quantity` 1, and one SKU cannot name the same code twice: otherwise the request is
           rejected with 422, as for a known SKU. The rest is checked once the product exists: if the
@@ -10297,6 +10299,12 @@ paths:
                   value:
                     error: unit_code UC-0001 is requested twice
                     code: DUPLICATE_UNIT_CODE
+                    context: null
+                discountsExceedValue:
+                  summary: The discounts are larger than what the products are worth, so the total would be negative
+                  value:
+                    error: discounts exceed the value of the products
+                    code: INVALID_PRODUCT_DISCOUNT
                     context: null
                 cncServiceCodeInvalid:
                   value:
