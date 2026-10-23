@@ -305,16 +305,22 @@ paths:
         Files are sent as base64 strings inside a JSON body, not as multipart form data. Use it to
         provide the shipping label of an order that ships with your own carrier, or to add documents
         the warehouse must print and include in the package.
-        - Documents are appended; existing documents are not removed. Use `PUT /orders/{id}` with
-          `shipping_documents` if you need to replace the ones you uploaded before.
+        - Documents are appended; documents that have content are not removed. Use `PUT /orders/{id}`
+          with `shipping_documents` if you need to replace the ones you uploaded before.
+        - An existing document of the same `printing_type` whose file is empty is replaced by the one
+          you upload, so the warehouse prints the new file instead of the empty one. Use this to fix
+          a label that arrived empty.
+        - If you send a document without `metadata`, it keeps the metadata of the empty document it
+          replaces. For a `label`, if no empty document had any, it takes the metadata sent with a
+          label URL of this order that has not given back a label yet.
+        - Each file must have content, and a file declared as `application/pdf` must be a PDF.
+          Otherwise the request is refused with `422` and nothing is stored or removed.
         - The order can be in any status. If the order is in `error` (for example because its label
           was missing), it is automatically re-processed after the upload.
         - Accepted file types: PDF, PNG and JPEG, each under 5 MB. `metadata` is free-form JSON of at
           most 10 KB.
         - At least one document is required.
-        - Requires an API user with the "orders update" permission and access to the store. Note that
-          a permission failure inside this action is currently answered with `500 unexpected error`
-          rather than `401`.
+        - Requires an API user with the "orders update" permission and access to the store.
       security:
         - bearerAuth: []
       parameters:
@@ -354,8 +360,10 @@ paths:
                 emptyList: {value: {error: "shipping_documents is expected to be an array of at least one element."}}
                 missingField: {value: {error: "Parameter base64_data is required"}}
                 orderNotFound: {value: {error: "Couldn't find Order with 'id'=123456"}}
+                emptyFile: {value: {error: "shipping document label.pdf is empty"}}
+                notAPdf: {value: {error: "shipping document label.pdf is not a PDF"}}
         '500':
-          description: Unexpected error. Also returned when a file is rejected (unsupported type, over 5 MB, metadata over 10 KB) or when the API user lacks permission on this order.
+          description: Unexpected error. Also returned when a file is rejected for its type (other than PDF, PNG or JPEG), size (over 5 MB) or metadata (over 10 KB).
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Error'}
