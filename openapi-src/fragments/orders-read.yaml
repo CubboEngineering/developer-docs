@@ -1245,7 +1245,9 @@ components:
           oneOf:
             - $ref: '#/components/schemas/OrderLineProduct'
             - type: 'null'
-          description: The product behind the line, when included by the endpoint.
+          description: >-
+            The product behind the line, when included by the endpoint. `null` while the line's SKU
+            does not exist in the store (an order created with an unknown SKU; see `POST /orders`).
         stock_units:
           type: array
           description: Physical units assigned to the line, when included by the endpoint.
