@@ -24,9 +24,9 @@ paths:
           reject the whole request.
         - `zip_code` is mandatory when the warehouse is in Mexico (and Brazil); it is optional for
           Chile and Colombia.
-        - Chile: `shipping.city` carries the comuna. When it cannot be identified (a misspelling, or a
-          province instead of a comuna), an order sent with `shipping_method_id` is not refused. It is
-          created and moves to `error` until you correct `shipping.city` with `PUT /orders/{id}` or in
+        - Chile: when `shipping.city` cannot be identified (a misspelling, or a province instead of a
+          city), an order sent with `shipping_method_id` is not refused. It is created and moves to
+          `error` until you correct `shipping.city` with `PUT /orders/{id}` or in
           the Cubbo app, where the order shows the reason. An order that ships on your own label (Blue
           Express EX, with the label attached) continues normally. A `shipping.city` that is identified
           but not covered by the method is still refused with 422.
@@ -885,7 +885,7 @@ components:
             Id of a Cubbo shipping method. Get it from `GET /shipping-methods/quote`: each option in the response has a
             `shipping_method_id`. Required unless
             `shipping_line_code` is sent. Coverage for the destination is checked synchronously: by zip
-            code in Mexico, by `shipping.city` (the comuna) in Chile. In Chile a `shipping.city` that
+            code in Mexico, by `shipping.city` in Chile. In Chile a `shipping.city` that
             cannot be identified does not refuse the order; it is created in `error` until it is corrected.
           example: 12
         shipping_line_code:

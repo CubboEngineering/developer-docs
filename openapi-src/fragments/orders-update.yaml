@@ -25,7 +25,7 @@ paths:
         - When you change `shipping` without sending `shipping_method_id`, an order created through a
           sales-channel integration with a shipping-method mapping gets its shipping method re-evaluated
           during re-processing, unless the order ships on the marketplace's own label.
-        - Chile: when you send `shipping_method_id` and `shipping.city` (the comuna) cannot be
+        - Chile: when you send `shipping_method_id` and `shipping.city` cannot be
           identified, the update is still saved with the rest of your changes. The order goes back to
           `error` until `shipping.city` is corrected.
         - A marketplace order that ships on the marketplace's own label can only move to another
