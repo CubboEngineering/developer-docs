@@ -1750,7 +1750,10 @@ components:
           example: CUBBOCNCEST001
         channel_name:
           type: string
-          description: Name of the sales channel the order came from, echoed back as `channel_name` on the order.
+          description: >-
+            Name of the sales channel the order came from, echoed back as `channel_name` on the order. Sending
+            it also lets the order be created when a SKU is missing from the catalog (see the endpoint
+            description).
           example: my-webstore
         channel_order_id:
           type: string
@@ -1962,8 +1965,50 @@ components:
           type: string
           description: >-
             Pins the line to the one stock unit carrying this code. Only valid on a line with `quantity` 1 of
-            a non-kit product that tracks unit codes; mandatory for products that hold personalized units.
+            a non-kit product that tracks unit codes; mandatory for products that hold personalized units. On
+            a line whose SKU does not exist yet (only with `channel_name`), the quantity and a repeated code
+            are checked on creation, and the rest once the product exists.
           example: UC-0001
+    OrderCreated:
+      description: The order as `POST /orders` returns it.
+      allOf:
+        - $ref: "#/components/schemas/Order"
+        - type: object
+          properties:
+            warnings:
+              type: array
+              description: >-
+                Present only when the order was created with something it still needs from you.
+                `UNIDENTIFIED_PRODUCT` lists, in `context.skus`, the SKUs not found in the store's catalog;
+                the order waits with missing information until those products exist.
+              items:
+                $ref: "#/components/schemas/OrderCreateWarning"
+    OrderCreateWarning:
+      type: object
+      required:
+        - code
+        - message
+        - context
+      properties:
+        code:
+          type: string
+          enum:
+            - UNIDENTIFIED_PRODUCT
+          example: UNIDENTIFIED_PRODUCT
+        message:
+          type: string
+          example: >-
+            skus SKU-UNKNOWN not found in Cubbo: the order was created with missing information until the
+            products exist
+        context:
+          type: object
+          properties:
+            skus:
+              type: array
+              items:
+                type: string
+              example:
+                - SKU-UNKNOWN
     OrderShippingDocument:
       type: object
       required:
@@ -3233,7 +3278,9 @@ components:
           oneOf:
             - $ref: "#/components/schemas/OrderLineProduct"
             - type: "null"
-          description: The product behind the line, when included by the endpoint.
+          description: >-
+            The product behind the line, when included by the endpoint. `null` while the line's SKU does not
+            exist in the store (an order created with an unknown SKU; see `POST /orders`).
         stock_units:
           type: array
           description: Physical units assigned to the line, when included by the endpoint.
@@ -9856,8 +9903,31 @@ paths:
         - The order is returned immediately in its initial status. Address, coverage, stock and
           carrier validations run asynchronously; poll `GET /orders` and read `status`,
           `has_missing_info` and `missing_info` to learn whether it was accepted.
-        - Every product is identified by SKU and must already exist in the store; unknown SKUs
-          reject the whole request.
+        - Every product is identified by SKU. Without `channel_name`, an unknown SKU rejects the whole
+          request with 422. With `channel_name` (an order relayed from a sales channel), the order is
+          created anyway: a line whose SKU is unknown keeps that SKU without a product, and the
+          response lists those SKUs in `warnings` with the code `UNIDENTIFIED_PRODUCT`. Processing
+          then leaves the order with missing information (`status` `error`; with
+          `include_event_history=true`, `GET /orders` shows the code `UNIDENTIFIED_PRODUCT` in the
+          error event) until the product exists. Creating the product or adding the SKU to an
+          existing product in the Cubbo app processes the order again and the line takes the
+          product; creating it with `POST /products` without variants does not trigger that reprocess
+          today.
+        - A line sent without `price_per_item` takes the product's price. On a line whose SKU is
+          unknown there is no product price yet, so the line counts as zero in the order total, and so
+          does its discount; once the product exists, the line takes the product's price and the
+          order total is recomputed (a kit without its own price is worth its components). A product
+          price smaller than the line's discount is not taken. Discounts larger than what the
+          products are worth are rejected with 422 `INVALID_PRODUCT_DISCOUNT`.
+        - A `unit_code` sent on a line whose SKU is unknown is kept. The line must still have
+          `quantity` 1, and one SKU cannot name the same code twice: otherwise the request is
+          rejected with 422, as for a known SKU. The rest is checked once the product exists: if the
+          line can never be fulfilled (a kit, or a product that does not track unit codes and has no
+          unit carrying that code), the order waits with missing information, code
+          `INVALID_UNIT_CODE_LINE`; two lines whose SKUs turn out to be the same product and name the
+          same code give `DUPLICATE_UNIT_CODE` on the later line. Correct the line by editing the
+          order in the Cubbo app; `PUT /orders/{id}` does not replace the products of an order with a
+          pinned line.
         - `zip_code` is mandatory when the warehouse is in Mexico (and Brazil); it is optional for
           Chile and Colombia.
         - Chile: when `shipping.city` cannot be identified (a misspelling, or a province instead of a
@@ -9993,11 +10063,13 @@ paths:
         "200":
           description: >-
             Order created. The body is the full order as Cubbo stores it, including its lines and the resolved
-            shipping method. The order is still in its initial status; processing happens asynchronously.
+            shipping method. The order is still in its initial status; processing happens asynchronously. When
+            the order was created with SKUs that are not in the store's catalog (only possible with
+            `channel_name`), the body also carries `warnings`.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Order"
+                $ref: "#/components/schemas/OrderCreated"
               example:
                 id: 987654
                 store_id: 1234
@@ -10210,6 +10282,7 @@ paths:
                     code: ""
                     context: null
                 skuNotFound:
+                  summary: A SKU is not in the store's catalog and the request has no channel_name
                   value:
                     error: skus SKU-UNKNOWN not found in Cubbo
                     code: ""
@@ -10236,6 +10309,12 @@ paths:
                   value:
                     error: unit_code UC-0001 is requested twice
                     code: DUPLICATE_UNIT_CODE
+                    context: null
+                discountsExceedValue:
+                  summary: The discounts are larger than what the products are worth, so the total would be negative
+                  value:
+                    error: discounts exceed the value of the products
+                    code: INVALID_PRODUCT_DISCOUNT
                     context: null
                 cncServiceCodeInvalid:
                   value:
