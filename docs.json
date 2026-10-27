@@ -28,7 +28,8 @@
                   "index",
                   "guides/setup",
                   "quickstart",
-                  "guides/authentication"
+                  "guides/authentication",
+                  "guides/sandbox"
                 ]
               },
               {
@@ -65,7 +66,8 @@
                   "es/index",
                   "es/guides/setup",
                   "es/quickstart",
-                  "es/guides/authentication"
+                  "es/guides/authentication",
+                  "es/guides/sandbox"
                 ]
               },
               {
@@ -115,7 +117,8 @@
                   "pt-BR/index",
                   "pt-BR/guides/setup",
                   "pt-BR/quickstart",
-                  "pt-BR/guides/authentication"
+                  "pt-BR/guides/authentication",
+                  "pt-BR/guides/sandbox"
                 ]
               },
               {
