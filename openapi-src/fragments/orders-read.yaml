@@ -1087,6 +1087,7 @@ components:
         country: {type: [string, 'null'], description: "Two-letter country code.", example: MX}
         state: {type: [string, 'null'], description: "State or province.", example: CDMX}
         city: {type: [string, 'null'], description: "City.", example: Ciudad de Mexico}
+        city_code: {type: [string, 'null'], description: "Colombia: the DANE code of the city that decides the destination, as you sent it in `shipping.city_code`; null when the city and province decide.", example: null}
         number: {type: [string, 'null'], description: "Street number.", example: '123'}
         interior_number: {type: [string, 'null'], description: "Apartment or interior number.", example: null}
         neighborhood: {type: [string, 'null'], description: "Neighborhood (colonia / bairro).", example: Centro}

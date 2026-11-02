@@ -28,6 +28,10 @@ paths:
         - Chile: when you send `shipping_method_id` and `shipping.city` cannot be
           identified, the update is still saved with the rest of your changes. The order goes back to
           `error` until `shipping.city` is corrected.
+        - Colombia: `shipping.city_code` is replaced with the rest of `shipping`, so send it again on
+          every update that includes `shipping`; omitted, it is cleared and the city and province decide
+          the destination. A code Cubbo does not know is saved with the rest of your changes and the
+          order goes back to `error` until it is corrected.
         - A marketplace order that ships on the marketplace's own label can only move to another
           marketplace-label shipping method; the refusal carries the code
           `MARKETPLACE_WITH_EXTERNAL_GUIDE` so you can tell it apart from a fixable validation error.
@@ -148,6 +152,9 @@ paths:
           editable status is re-processed without a status change. Orders in `canceled`, `interrupted`
           or in fulfillment (`processing`, `picking`, `packing`) are saved but not re-processed.
         - At least one field must be provided.
+        - Colombia: changing `shipping_city` or `shipping_state` clears the order's `city_code`, and the
+          city and province decide the destination again. To keep deciding by code, use
+          `PUT /orders/{id}` with `shipping.city_code`.
         - Requires an API user with the "orders update" permission and access to the store. The order
           must also be editable for your store: a Brazilian order whose NF-e was approved more than
           24 hours ago, or a store with order editing restricted by Cubbo, is answered with `401`.
@@ -561,6 +568,7 @@ components:
         city: {type: [string, 'null'], description: City., example: "Ciudad de Mexico"}
         province: {type: [string, 'null'], description: State or province., example: "CDMX"}
         zip_code: {type: [string, 'null'], description: Postal code., example: "06600"}
+        city_code: {type: [string, 'null'], description: "Colombia only: the DANE code of the city (5 or 8 digits). When sent, it decides the destination instead of `city` and `province`.", example: "11001"}
     OrderUpdateBillingAddress:
       type: object
       description: Billing contact and address. Sending this object replaces the whole billing block; omitted fields are cleared.

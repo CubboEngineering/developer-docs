@@ -1885,6 +1885,13 @@ components:
             Postal code. Required when the warehouse is in Mexico (`MISSING_ZIP_CODE` otherwise); optional for
             Chile and Colombia. Used for carrier coverage.
           example: "06600"
+        city_code:
+          type: string
+          description: >-
+            Colombia only: the DANE (DIVIPOLA) code of the city, 5 digits (a municipality) or 8 (a populated
+            center). When sent, it decides the destination instead of `city` and `province`; a code Cubbo does
+            not know leaves the order in `error` instead of refusing it. Not used in other countries.
+          example: "11001"
     OrderBillingAddress:
       type: object
       description: Optional billing contact and address.
@@ -2792,6 +2799,14 @@ components:
             - "null"
           description: City.
           example: Ciudad de Mexico
+        city_code:
+          type:
+            - string
+            - "null"
+          description: >-
+            Colombia: the DANE code of the city that decides the destination, as you sent it in
+            `shipping.city_code`; null when the city and province decide.
+          example: null
         number:
           type:
             - string
@@ -4377,6 +4392,14 @@ components:
             - "null"
           description: Postal code.
           example: "06600"
+        city_code:
+          type:
+            - string
+            - "null"
+          description: >-
+            Colombia only: the DANE code of the city (5 or 8 digits). When sent, it decides the destination
+            instead of `city` and `province`.
+          example: "11001"
     OrderUpdateBillingAddress:
       type: object
       description: >-
@@ -9936,6 +9959,14 @@ paths:
           the Cubbo app, where the order shows the reason. An order that ships on your own label (Blue
           Express EX, with the label attached) continues normally. A `shipping.city` that is identified
           but not covered by the method is still refused with 422.
+        - Colombia: carriers deliver by the DANE (DIVIPOLA) code of the destination city. Cubbo finds it
+          from `shipping.city` and `shipping.province`, or you send it in `shipping.city_code`: when
+          present, the code decides the destination and the city and province are not looked up. A
+          5-digit code (a municipality) stands for its main town; an 8-digit code is a populated center;
+          a code missing its leading zero (4 or 7 digits) is completed. An order whose
+          `shipping.city_code` Cubbo does not know is not refused: it is created and moves to `error`
+          until you correct the code with `PUT /orders/{id}`. Without `city_code`, an order sent with
+          `shipping_method_id` whose city and province cannot be identified is still refused with 422.
         - Duplicate protection: an `order_number` that already exists in the store answers 422 with
           code `ORDER_ALREADY_EXISTS` and the existing `order_id` in `context`. While another request
           for the same `store_id` + `order_number` is still being processed you get 409
@@ -10035,6 +10066,25 @@ paths:
                     city: Santiago
                     province: Región Metropolitana
                     zip_code: "8320000"
+                  products:
+                    - sku: SKU-RED-M
+                      quantity: 1
+              colombiaCityCode:
+                summary: Colombia, with the DANE code of the city
+                value:
+                  store_id: 1234
+                  order_number: ORD-0004
+                  shipping_method_id: 56
+                  shipping:
+                    first_name: Ana
+                    last_name: Gómez
+                    phone: "5555555555"
+                    email: buyer@example.com
+                    address1: "Calle 100 # 10-20"
+                    country: CO
+                    city: Bogotá
+                    province: Bogotá, D.C.
+                    city_code: "11001"
                   products:
                     - sku: SKU-RED-M
                       quantity: 1
@@ -10775,6 +10825,10 @@ paths:
         - Chile: when you send `shipping_method_id` and `shipping.city` cannot be
           identified, the update is still saved with the rest of your changes. The order goes back to
           `error` until `shipping.city` is corrected.
+        - Colombia: `shipping.city_code` is replaced with the rest of `shipping`, so send it again on
+          every update that includes `shipping`; omitted, it is cleared and the city and province decide
+          the destination. A code Cubbo does not know is saved with the rest of your changes and the
+          order goes back to `error` until it is corrected.
         - A marketplace order that ships on the marketplace's own label can only move to another
           marketplace-label shipping method; the refusal carries the code
           `MARKETPLACE_WITH_EXTERNAL_GUIDE` so you can tell it apart from a fixable validation error.
@@ -10945,6 +10999,9 @@ paths:
           editable status is re-processed without a status change. Orders in `canceled`, `interrupted`
           or in fulfillment (`processing`, `picking`, `packing`) are saved but not re-processed.
         - At least one field must be provided.
+        - Colombia: changing `shipping_city` or `shipping_state` clears the order's `city_code`, and the
+          city and province decide the destination again. To keep deciding by code, use
+          `PUT /orders/{id}` with `shipping.city_code`.
         - Requires an API user with the "orders update" permission and access to the store. The order
           must also be editable for your store: a Brazilian order whose NF-e was approved more than
           24 hours ago, or a store with order editing restricted by Cubbo, is answered with `401`.
