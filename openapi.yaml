@@ -1890,7 +1890,8 @@ components:
           description: >-
             Colombia only: the DANE (DIVIPOLA) code of the city, 5 digits (a municipality) or 8 (a populated
             center). When sent, it decides the destination instead of `city` and `province`; a code Cubbo does
-            not know leaves the order in `error` instead of refusing it. Not used in other countries.
+            not know leaves the order in `error` (`UNRECOGNIZED_CITY_CODE`) instead of refusing it. Not used
+            in other countries.
           example: "11001"
     OrderBillingAddress:
       type: object
@@ -2127,7 +2128,7 @@ components:
                 type: string
                 description: >-
                   Validation code, for example `NATIONAL_SHIPPING_METHOD_EXPECTED`, `MISSING_SHIPPING_FIELD`,
-                  `SHIPPING_METHOD_HAS_NO_COVERAGE`, `UNRECOGNIZED_CITY_OR_STATE`.
+                  `SHIPPING_METHOD_HAS_NO_COVERAGE`, `UNRECOGNIZED_CITY_OR_STATE`, `UNRECOGNIZED_CITY_CODE`.
                 example: NATIONAL_SHIPPING_METHOD_EXPECTED
               additional_info:
                 type: object
@@ -9965,7 +9966,8 @@ paths:
           5-digit code (a municipality) stands for its main town; an 8-digit code is a populated center;
           a code missing its leading zero (4 or 7 digits) is completed. An order whose
           `shipping.city_code` Cubbo does not know is not refused: it is created and moves to `error`
-          until you correct the code with `PUT /orders/{id}`. Without `city_code`, an order sent with
+          with the code `UNRECOGNIZED_CITY_CODE` (the code you sent is in `additional_info.city_code`)
+          until you correct it with `PUT /orders/{id}`. Without `city_code`, an order sent with
           `shipping_method_id` whose city and province cannot be identified is still refused with 422.
         - Duplicate protection: an `order_number` that already exists in the store answers 422 with
           code `ORDER_ALREADY_EXISTS` and the existing `order_id` in `context`. While another request
@@ -10828,7 +10830,7 @@ paths:
         - Colombia: `shipping.city_code` is replaced with the rest of `shipping`, so send it again on
           every update that includes `shipping`; omitted, it is cleared and the city and province decide
           the destination. A code Cubbo does not know is saved with the rest of your changes and the
-          order goes back to `error` until it is corrected.
+          order goes back to `error` (`UNRECOGNIZED_CITY_CODE`) until it is corrected.
         - A marketplace order that ships on the marketplace's own label can only move to another
           marketplace-label shipping method; the refusal carries the code
           `MARKETPLACE_WITH_EXTERNAL_GUIDE` so you can tell it apart from a fixable validation error.
