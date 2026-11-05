@@ -31,9 +31,7 @@ paths:
         - Colombia: `shipping.city_code` is replaced with the rest of `shipping`, so send it again on
           every update that includes `shipping`; omitted, it is cleared and the city and province decide
           the destination. A code Cubbo does not know is saved with the rest of your changes and the
-          order goes back to `error` (`UNRECOGNIZED_CITY_CODE`) until it is corrected. A known code
-          whose municipality `city` and `province` do not name is saved too, and the order goes back to
-          `error` (`CITY_CODE_DOES_NOT_MATCH_CITY`) until the code or the city is corrected.
+          order goes back to `error` (`UNRECOGNIZED_CITY_CODE`) until it is corrected.
         - A marketplace order that ships on the marketplace's own label can only move to another
           marketplace-label shipping method; the refusal carries the code
           `MARKETPLACE_WITH_EXTERNAL_GUIDE` so you can tell it apart from a fixable validation error.

@@ -60,14 +60,8 @@ paths:
           a code missing its leading zero (4 or 7 digits) is completed. An order whose
           `shipping.city_code` Cubbo does not know is not refused: it is created and moves to `error`
           with the code `UNRECOGNIZED_CITY_CODE` (the code you sent is in `additional_info.city_code`)
-          until you correct it with `PUT /orders/{id}`. A known `shipping.city_code` is also checked
-          against `shipping.city` and `shipping.province`: when they name another municipality, or none,
-          the order is created and moves to `error` with the code `CITY_CODE_DOES_NOT_MATCH_CITY`
-          (`additional_info` carries `city_code`, `city_code_municipality` and `city_municipality`,
-          null when the city matched none), so the destination is confirmed before a label goes out.
-          Correct the code or the city with `PUT /orders/{id}`; sending the same data again does not
-          release it. Without `city_code`, an order sent with `shipping_method_id` whose city and
-          province cannot be identified is still refused with 422.
+          until you correct it with `PUT /orders/{id}`. Without `city_code`, an order sent with
+          `shipping_method_id` whose city and province cannot be identified is still refused with 422.
         - Duplicate protection: an `order_number` that already exists in the store answers 422 with
           code `ORDER_ALREADY_EXISTS` and the existing `order_id` in `context`. While another request
           for the same `store_id` + `order_number` is still being processed you get 409
@@ -1122,8 +1116,7 @@ components:
             Colombia only: the DANE (DIVIPOLA) code of the city, 5 digits (a municipality) or 8 (a
             populated center). When sent, it decides the destination instead of `city` and `province`; a
             code Cubbo does not know leaves the order in `error` (`UNRECOGNIZED_CITY_CODE`) instead of
-            refusing it, and so does a code whose municipality `city` and `province` do not name
-            (`CITY_CODE_DOES_NOT_MATCH_CITY`). Not used in other countries.
+            refusing it. Not used in other countries.
           example: "11001"
 
     OrderBillingAddress:
@@ -1323,7 +1316,7 @@ components:
                 example: "shipping_method"
               code:
                 type: string
-                description: Validation code, for example `NATIONAL_SHIPPING_METHOD_EXPECTED`, `MISSING_SHIPPING_FIELD`, `SHIPPING_METHOD_HAS_NO_COVERAGE`, `UNRECOGNIZED_CITY_OR_STATE`, `UNRECOGNIZED_CITY_CODE`, `CITY_CODE_DOES_NOT_MATCH_CITY`.
+                description: Validation code, for example `NATIONAL_SHIPPING_METHOD_EXPECTED`, `MISSING_SHIPPING_FIELD`, `SHIPPING_METHOD_HAS_NO_COVERAGE`, `UNRECOGNIZED_CITY_OR_STATE`, `UNRECOGNIZED_CITY_CODE`.
                 example: "NATIONAL_SHIPPING_METHOD_EXPECTED"
               additional_info:
                 type: object
