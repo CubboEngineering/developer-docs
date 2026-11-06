@@ -17,13 +17,15 @@ Every request except token creation carries a `Bearer` token. See [Authenticatio
 
 ## Test store and production account
 
-Cubbo has a single environment: production. There is no separate sandbox. Instead, you test your integration in a
-**test store** before you start operating:
+Cubbo has a single environment: production. There is no separate test environment. Instead, you test your
+integration in a **test store** before you start operating:
 
 1. **Contact Cubbo.** Write to Cubbo's support team or to your account manager. They guide you through the process
    and create your test store, which Cubbo marks as a test account.
 2. **Run all your tests in the test store.** Create the integration and its credentials, configure shipping methods
-   and webhooks, and test every endpoint your integration uses.
+   and webhooks, and test every endpoint your integration uses. The sandbox endpoints let you complete your own
+   replenishments, ship your own orders and change their tracking, so you can test the whole flow and its webhooks
+   without waiting for the warehouse. See [Test your integration](/guides/sandbox).
 3. **Activate your production account.** When your tests are complete, ask your account manager to activate your
    production account. It has its own credentials and its own `store_id`.
 

@@ -38,6 +38,8 @@ tags:
     description: Available shipping methods, coverage and quotes.
   - name: Click and collect
     description: Pickup points and in-store pickup orders.
+  - name: Sandbox
+    description: Move a test store's receipts and orders through the warehouse and carrier steps to test your integration. Test stores only.
 components:
   securitySchemes:
     bearerAuth:
