@@ -58,9 +58,9 @@ paths:
           present, the code decides the destination and the city and province are not looked up. A
           5-digit code (a municipality) stands for its main town; an 8-digit code is a populated center;
           a code missing its leading zero (4 or 7 digits) is completed. An order whose
-          `shipping.city_code` Cubbo does not know is not refused: it is created and moves to `error`
-          with the code `UNRECOGNIZED_CITY_CODE` (the code you sent is in `additional_info.city_code`)
-          until you correct it with `PUT /orders/{id}`. Without `city_code`, an order sent with
+          `shipping.city_code` Cubbo does not know is not refused: the response lists it in `warnings`
+          with the code `UNRECOGNIZED_CITY_CODE`, and the order moves to `error` with that code (the
+          code you sent is in `additional_info.city_code`) until you correct it with `PUT /orders/{id}`. Without `city_code`, an order sent with
           `shipping_method_id` whose city and province cannot be identified is still refused with 422.
         - Duplicate protection: an `order_number` that already exists in the store answers 422 with
           code `ORDER_ALREADY_EXISTS` and the existing `order_id` in `context`. While another request
@@ -210,7 +210,8 @@ paths:
             Order created. The body is the full order as Cubbo stores it, including its lines and the
             resolved shipping method. The order is still in its initial status; processing happens
             asynchronously. When the order was created with SKUs that are not in the store's catalog
-            (only possible with `channel_name`), the body also carries `warnings`.
+            (only possible with `channel_name`), or with a Colombian `shipping.city_code` Cubbo does
+            not know, the body also carries `warnings`.
           content:
             application/json:
               schema:
@@ -1209,6 +1210,9 @@ components:
                 Present only when the order was created with something it still needs from you.
                 `UNIDENTIFIED_PRODUCT` lists, in `context.skus`, the SKUs not found in the store's
                 catalog; the order waits with missing information until those products exist.
+                `UNRECOGNIZED_CITY_CODE` gives, in `context.city_code`, the Colombian
+                `shipping.city_code` Cubbo does not know; the order waits in `error` until you correct
+                it with `PUT /orders/{id}`.
               items:
                 $ref: '#/components/schemas/OrderCreateWarning'
 
@@ -1218,7 +1222,7 @@ components:
       properties:
         code:
           type: string
-          enum: [UNIDENTIFIED_PRODUCT]
+          enum: [UNIDENTIFIED_PRODUCT, UNRECOGNIZED_CITY_CODE]
           example: "UNIDENTIFIED_PRODUCT"
         message:
           type: string
@@ -1231,6 +1235,9 @@ components:
               items:
                 type: string
               example: ["SKU-UNKNOWN"]
+            city_code:
+              type: string
+              example: "99999"
 
     OrderShippingDocument:
       type: object
