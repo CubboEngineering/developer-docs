@@ -438,6 +438,8 @@ paths:
         - Not available for stores where Cubbo issues fiscal invoices (for example Brazil): those
           answer `INVOICING_NOT_IMPLEMENTED`.
         - The order is always a consumer (D2C), paid, non cash-on-delivery order with zero prices.
+        - Colombia: `shipping.city_code` works as in `POST /orders`, except that a code Cubbo does not
+          know is refused with 422 `UNRECOGNIZED_CITY_CODE`, since the labels are generated now.
         - Duplicate protection works like `POST /orders`: 422 `ORDER_ALREADY_EXISTS` for an existing
           `order_number`, 409 `DUPLICATE_REQUEST_IN_FLIGHT` while another request for the same
           `order_number` is in progress.
@@ -1432,6 +1434,15 @@ components:
           type: string
           description: Postal code. Required when the warehouse is in Mexico (`MISSING_ZIP_CODE` otherwise).
           example: "06600"
+        city_code:
+          type: string
+          description: >-
+            Colombia: optional, the DANE (DIVIPOLA) code of the city, as in `POST /orders`. When sent,
+            it decides the destination instead of `city` and `province`. The labels are generated in
+            this same call, so a code Cubbo does not know is refused with 422
+            `UNRECOGNIZED_CITY_CODE`. In other countries it is stored as sent, but it does not change
+            the destination.
+          example: "11001"
 
     CreateAndShipProductLine:
       type: object
