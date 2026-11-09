@@ -1116,7 +1116,8 @@ components:
             Colombia only: the DANE (DIVIPOLA) code of the city, 5 digits (a municipality) or 8 (a
             populated center). When sent, it decides the destination instead of `city` and `province`; a
             code Cubbo does not know leaves the order in `error` (`UNRECOGNIZED_CITY_CODE`) instead of
-            refusing it. Not used in other countries.
+            refusing it. In other countries it is stored and returned as
+            sent, but it does not change the destination.
           example: "11001"
 
     OrderBillingAddress:

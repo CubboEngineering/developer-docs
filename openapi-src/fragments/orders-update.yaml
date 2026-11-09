@@ -568,7 +568,7 @@ components:
         city: {type: [string, 'null'], description: City., example: "Ciudad de Mexico"}
         province: {type: [string, 'null'], description: State or province., example: "CDMX"}
         zip_code: {type: [string, 'null'], description: Postal code., example: "06600"}
-        city_code: {type: [string, 'null'], description: "Colombia only: the DANE code of the city (5 or 8 digits). When sent, it decides the destination instead of `city` and `province`.", example: "11001"}
+        city_code: {type: [string, 'null'], description: "Colombia: the DANE code of the city (5 or 8 digits). When sent, it decides the destination instead of `city` and `province`. In other countries it is stored and returned as sent, but it does not change the destination.", example: "11001"}
     OrderUpdateBillingAddress:
       type: object
       description: Billing contact and address. Sending this object replaces the whole billing block; omitted fields are cleared.
