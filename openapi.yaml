@@ -10210,6 +10210,7 @@ paths:
                   interior_number: null
                   neighborhood: null
                   references: Blue door
+                  city_code: null
                 billing:
                   first_name: null
                   last_name: null
@@ -10731,6 +10732,7 @@ paths:
                       interior_number: null
                       neighborhood: Centro
                       references: Blue door
+                      city_code: null
                     billing:
                       first_name: Ana
                       last_name: Example
@@ -10911,26 +10913,46 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/OrderUpdateRequest"
-            example:
-              store_id: 1234
-              is_paid: true
-              shipping_method_id: 77
-              shipping:
-                first_name: Jane
-                last_name: Buyer
-                phone: "5551234567"
-                address1: Calle Falsa 123
-                address2: Depto 4
-                interior_number: "4"
-                country: MX
-                city: Ciudad de Mexico
-                province: CDMX
-                zip_code: "06600"
-              products:
-                - sku: SKU-RED-M
-                  quantity: 2
-                - sku: SKU-BLUE-L
-                  quantity: 1
+            examples:
+              basic:
+                summary: Mexico, new address and products
+                value:
+                  store_id: 1234
+                  is_paid: true
+                  shipping_method_id: 77
+                  shipping:
+                    first_name: Jane
+                    last_name: Buyer
+                    phone: "5551234567"
+                    address1: Calle Falsa 123
+                    address2: Depto 4
+                    interior_number: "4"
+                    country: MX
+                    city: Ciudad de Mexico
+                    province: CDMX
+                    zip_code: "06600"
+                  products:
+                    - sku: SKU-RED-M
+                      quantity: 2
+                    - sku: SKU-BLUE-L
+                      quantity: 1
+              colombiaCityCode:
+                summary: Colombia, correcting the DANE code of the city
+                value:
+                  store_id: 1234
+                  shipping_method_id: 56
+                  shipping:
+                    first_name: Ana
+                    last_name: Gómez
+                    phone: "5555555555"
+                    address1: "Calle 100 # 10-20"
+                    country: CO
+                    city: Bogotá
+                    province: Bogotá, D.C.
+                    city_code: "11001"
+                  products:
+                    - sku: SKU-RED-M
+                      quantity: 1
       responses:
         "200":
           description: The updated order (with its order lines) as saved, before re-processing.
@@ -10953,6 +10975,7 @@ paths:
                   state: CDMX
                   zip_code: "06600"
                   country: MX
+                  city_code: null
                 order_lines:
                   - sku: SKU-RED-M
                     quantity: 2
@@ -12425,28 +12448,55 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/OrderCreateAndShipRequest"
-            example:
-              store_id: 1234
-              order_number: PS-0001
-              shipping_method_id: 12
-              shipping:
-                first_name: Jaime
-                last_name: Carrera
-                phone: "5555555555"
-                email: buyer@example.com
-                address1: Av. Reforma 123
-                country: MX
-                city: Ciudad de México
-                province: CDMX
-                zip_code: "06600"
-              products:
-                - sku: SKU-RED-M
-                  quantity: 1
-              packages:
-                - weight_kg: 1.2
-                  length_cm: 30
-                  width_cm: 20
-                  height_cm: 10
+            examples:
+              basic:
+                summary: Mexico, one package
+                value:
+                  store_id: 1234
+                  order_number: PS-0001
+                  shipping_method_id: 12
+                  shipping:
+                    first_name: Jaime
+                    last_name: Carrera
+                    phone: "5555555555"
+                    email: buyer@example.com
+                    address1: Av. Reforma 123
+                    country: MX
+                    city: Ciudad de México
+                    province: CDMX
+                    zip_code: "06600"
+                  products:
+                    - sku: SKU-RED-M
+                      quantity: 1
+                  packages:
+                    - weight_kg: 1.2
+                      length_cm: 30
+                      width_cm: 20
+                      height_cm: 10
+              colombiaCityCode:
+                summary: Colombia, with the DANE code of the city
+                value:
+                  store_id: 1234
+                  order_number: PS-0002
+                  shipping_method_id: 56
+                  shipping:
+                    first_name: Ana
+                    last_name: Gómez
+                    phone: "5555555555"
+                    email: buyer@example.com
+                    address1: "Calle 100 # 10-20"
+                    country: CO
+                    city: Bogotá
+                    province: Bogotá, D.C.
+                    city_code: "11001"
+                  products:
+                    - sku: SKU-RED-M
+                      quantity: 1
+                  packages:
+                    - weight_kg: 1.2
+                      length_cm: 30
+                      width_cm: 20
+                      height_cm: 10
       responses:
         "200":
           description: Order created and packed; one shipping label per requested package.
@@ -12590,6 +12640,14 @@ paths:
                       - field: shipping_city
                         code: UNRECOGNIZED_CITY_OR_STATE
                         additional_info: {}
+                unrecognizedCityCode:
+                  summary: Colombia, a shipping.city_code Cubbo does not know (the order is not created)
+                  value:
+                    errors:
+                      - field: shipping_city_code
+                        code: UNRECOGNIZED_CITY_CODE
+                        additional_info:
+                          city_code: "99999"
         "500":
           description: Unexpected error (including carrier failures while buying the label).
           content:

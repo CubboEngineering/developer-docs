@@ -188,6 +188,7 @@ paths:
                       interior_number: null
                       neighborhood: Centro
                       references: Blue door
+                      city_code: null
                     billing:
                       first_name: Ana
                       last_name: Example
