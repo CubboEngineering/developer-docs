@@ -1,0 +1,383 @@
+paths:
+  /sandbox/replenishments/{replenishment_id}/complete:
+    post:
+      tags: [Sandbox]
+      operationId: sandboxCompleteReplenishment
+      summary: Complete a replenishment
+      description: |
+        Simulates the warehouse receiving and putting away everything a replenishment declared, so the
+        stock becomes available to your orders. Use it after `POST /replenishments` to test your
+        receiving and inventory flow without waiting for a real delivery.
+
+        The replenishment moves through `PROCESSING` and `IN_PUTAWAY` to `COMPLETED`, and you receive the
+        same webhooks as for a real receipt: one `replenishmentStatus` event per status, then an
+        `inventoryMovement` event for the received products (if your inventory webhook is enabled).
+
+        - Works only for test stores. See the "Test your integration" guide.
+        - Every declared unit is received in full: no shortages, damages or lots.
+        - The replenishment must not be canceled or completed, and Cubbo must not have started receiving it.
+        - Return replenishments and pre-sale (`sell_ahead`) replenishments are not supported.
+        - Orders already waiting for these products (`backorder`) pick up the new stock through Cubbo's
+          regular backorder processing, which can take a few minutes. To test the shortest path, complete
+          the replenishment before creating the order.
+        - No receiving charges are generated and no email is sent.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: replenishment_id
+          in: path
+          required: true
+          description: ID of the replenishment, as returned by `POST /replenishments`.
+          schema: {type: integer, example: 5678}
+      responses:
+        '200':
+          description: The replenishment was completed.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SandboxReplenishment'}
+              example:
+                id: 5678
+                store_id: 1234
+                status: COMPLETED
+                completed_at: "2026-10-20T15:04:05Z"
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/SandboxForbidden'}
+        '404': {$ref: '#/components/responses/SandboxNotFound'}
+        '409':
+          description: The replenishment cannot be completed in its current state, or another request is updating it.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SandboxError'}
+              examples:
+                invalidStatus:
+                  summary: Already completed or canceled
+                  value:
+                    error: {message: "This receipt is in status COMPLETED and cannot be completed.", code: INVALID_REPLENISHMENT_STATUS}
+                receivingStarted:
+                  summary: Cubbo started receiving it
+                  value:
+                    error: {message: "Cubbo already started receiving this receipt, so it cannot be completed through the sandbox.", code: RECEIVING_ALREADY_STARTED}
+                receptionUnavailable:
+                  summary: No reception area free
+                  value:
+                    error: {message: "No reception area is free right now. Try again in a few minutes.", code: RECEPTION_UNAVAILABLE}
+                concurrentRequest:
+                  summary: Another request is updating it
+                  value:
+                    error: {message: "This record is being updated by another request. Try again in a moment.", code: CONCURRENT_REQUEST}
+        '422':
+          description: The replenishment is not supported by the sandbox, or the sandbox is not set up for your test store.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SandboxError'}
+              examples:
+                notConfigured:
+                  summary: Sandbox not set up
+                  value:
+                    error: {message: "The sandbox is not set up for this test store yet. Contact your Cubbo account manager.", code: SANDBOX_NOT_CONFIGURED}
+                returnReplenishment:
+                  summary: Return replenishment
+                  value:
+                    error: {message: "Return receipts cannot be completed through the sandbox.", code: RETURN_REPLENISHMENT_NOT_SUPPORTED}
+                sellAhead:
+                  summary: Pre-sale replenishment
+                  value:
+                    error: {message: "Pre-sale receipts cannot be completed through the sandbox.", code: SELL_AHEAD_NOT_SUPPORTED}
+                empty:
+                  summary: No products
+                  value:
+                    error: {message: "This receipt has no products to receive.", code: EMPTY_REPLENISHMENT}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/SandboxUnexpectedError'}
+
+  /sandbox/orders/{order_id}/ship:
+    post:
+      tags: [Sandbox]
+      operationId: sandboxShipOrder
+      summary: Ship an order
+      description: |
+        Simulates the warehouse picking, packing and shipping an order with a test shipping label, so you
+        can test how your system reacts to an order being fulfilled.
+
+        The order moves through `processing`, `picking` and `packing` to `shipped`. You receive an
+        `orderUpdated` event for each of the first three statuses and an `orderFulfilled` event when it
+        ships, with the same payloads as a real shipment.
+
+        - Works only for test stores. See the "Test your integration" guide.
+        - Only orders created through this API. Click and collect, pick-and-ship and stock removal
+          orders are not supported.
+        - The order must have stock assigned: status `pending`, or already in `processing`, `picking` or
+          `packing` (it continues from there). An order in `backorder` answers `ORDER_WITHOUT_STOCK`;
+          complete a replenishment with its products first.
+        - No carrier is contacted. The tracking number starts with `SANDBOX-`, and the carrier name is
+          the one of the order's shipping method.
+        - `shipping_date` stays empty on orders shipped through the sandbox.
+        - Move the shipment forward with `POST /sandbox/orders/{order_id}/tracking`.
+        - No charges, invoices or customer emails are generated.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SandboxOrderId'
+      responses:
+        '200':
+          description: The order was shipped.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SandboxOrderShipment'}
+              example:
+                id: 987654
+                order_number: ORD-0001
+                store_id: 1234
+                status: shipped
+                shipping_status: null
+                tracking_number: SANDBOX-987654-1A2B3C4D
+                carrier_name: DHL
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/SandboxForbidden'}
+        '404': {$ref: '#/components/responses/SandboxNotFound'}
+        '409':
+          description: The order cannot be shipped in its current state, or another request is updating it.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SandboxError'}
+              examples:
+                withoutStock:
+                  summary: No stock assigned
+                  value:
+                    error: {message: "This order has no stock assigned yet. Complete a receipt with its products first.", code: ORDER_WITHOUT_STOCK}
+                invalidStatus:
+                  summary: Status that cannot be shipped
+                  value:
+                    error: {message: "This order is in status shipped and cannot be shipped.", code: INVALID_ORDER_STATUS}
+                concurrentRequest:
+                  summary: Another request is updating it
+                  value:
+                    error: {message: "This record is being updated by another request. Try again in a moment.", code: CONCURRENT_REQUEST}
+        '422':
+          description: The order is not supported by the sandbox.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SandboxError'}
+              examples:
+                notFromApi:
+                  summary: Order not created through the API
+                  value:
+                    error: {message: "Only orders created through the API can be shipped through the sandbox.", code: ORDER_NOT_FROM_API}
+                unsupportedType:
+                  summary: Unsupported order type
+                  value:
+                    error: {message: "This order's type is not supported by the sandbox.", code: ORDER_TYPE_NOT_SUPPORTED}
+                noShippingMethod:
+                  summary: No shipping method
+                  value:
+                    error: {message: "This order has no shipping method.", code: ORDER_WITHOUT_SHIPPING_METHOD}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/SandboxUnexpectedError'}
+
+  /sandbox/orders/{order_id}/tracking:
+    post:
+      tags: [Sandbox]
+      operationId: sandboxUpdateTracking
+      summary: Change the tracking status
+      description: |
+        Simulates a carrier tracking event on an order shipped through the sandbox. You receive a
+        `shippingUpdated` event with the same payload a real carrier event produces, and the order's
+        `shipping_status` changes as it would.
+
+        Call it as many times as you need, for example `shipment_collected`, then `shipment_in_transit`,
+        `shipment_out_for_delivery` and `shipment_delivered`, or `shipment_with_incident` with an
+        `incident_description` to test your incident handling.
+
+        - Works only for test stores and only on orders shipped with `POST /sandbox/orders/{order_id}/ship`.
+        - `shipment_delivered` is final: later changes answer `ORDER_ALREADY_DELIVERED`.
+        - Sending the current status again answers `SAME_TRACKING_STATUS`, except for
+          `shipment_with_incident`, which can repeat.
+        - With `incident_description` `lost` or `stolen`, the webhook has no `estimated_time_arrival`,
+          as with a real carrier.
+        - No customer notifications are sent.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SandboxOrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SandboxTrackingRequest'}
+            examples:
+              inTransit:
+                summary: In transit
+                value: {status: shipment_in_transit}
+              incident:
+                summary: Failed delivery attempt
+                value: {status: shipment_with_incident, incident_description: not_at_home}
+              delivered:
+                summary: Delivered
+                value: {status: shipment_delivered}
+      responses:
+        '200':
+          description: The tracking event was recorded.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SandboxOrderShipment'}
+              example:
+                id: 987654
+                order_number: ORD-0001
+                store_id: 1234
+                status: shipped
+                shipping_status: shipment_in_transit
+                tracking_number: SANDBOX-987654-1A2B3C4D
+                carrier_name: DHL
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/SandboxForbidden'}
+        '404': {$ref: '#/components/responses/SandboxNotFound'}
+        '409':
+          description: The order was not shipped through the sandbox, was already delivered, or already has that status.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SandboxError'}
+              examples:
+                notShipped:
+                  summary: Not shipped through the sandbox
+                  value:
+                    error: {message: "Ship this order through the sandbox before changing its tracking status.", code: ORDER_NOT_SHIPPED_BY_SANDBOX}
+                delivered:
+                  summary: Already delivered
+                  value:
+                    error: {message: "This order was already delivered.", code: ORDER_ALREADY_DELIVERED}
+                sameStatus:
+                  summary: Same status
+                  value:
+                    error: {message: "This order already has tracking status shipment_in_transit.", code: SAME_TRACKING_STATUS}
+        '422':
+          description: Invalid status or incident description.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SandboxError'}
+              examples:
+                invalidStatus:
+                  summary: Unknown status
+                  value:
+                    error: {message: "status must be one of: shipment_collected, shipment_in_transit, shipment_out_for_delivery, shipment_with_incident, shipment_delivered.", code: INVALID_TRACKING_STATUS}
+                invalidDescription:
+                  summary: Description without an incident
+                  value:
+                    error: {message: "incident_description is only accepted with status shipment_with_incident.", code: INVALID_INCIDENT_DESCRIPTION}
+                missingStatus:
+                  summary: Missing status
+                  value:
+                    error: {message: "Parameter status is required", code: INVALID_PARAMETER}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/SandboxUnexpectedError'}
+
+components:
+  parameters:
+    SandboxOrderId:
+      name: order_id
+      in: path
+      required: true
+      description: Cubbo ID of the order (`id` in the order responses), not your order number.
+      schema: {type: integer, example: 987654}
+  schemas:
+    SandboxError:
+      type: object
+      description: Error body of the sandbox endpoints.
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message, code]
+          properties:
+            message:
+              type: string
+              description: Human-readable description of the failure.
+            code:
+              type: string
+              description: Stable error code to branch on.
+              enum:
+                - SANDBOX_DISABLED
+                - NOT_A_TEST_STORE
+                - NOT_FOUND
+                - SANDBOX_NOT_CONFIGURED
+                - INVALID_PARAMETER
+                - CONCURRENT_REQUEST
+                - UNEXPECTED_ERROR
+                - INVALID_REPLENISHMENT_STATUS
+                - RECEIVING_ALREADY_STARTED
+                - RECEPTION_UNAVAILABLE
+                - RETURN_REPLENISHMENT_NOT_SUPPORTED
+                - SELL_AHEAD_NOT_SUPPORTED
+                - EMPTY_REPLENISHMENT
+                - PRODUCT_WITHOUT_SKU
+                - REPLENISHMENT_NOT_COMPLETABLE
+                - ORDER_NOT_FROM_API
+                - ORDER_TYPE_NOT_SUPPORTED
+                - ORDER_WITHOUT_SHIPPING_METHOD
+                - ORDER_WITHOUT_STOCK
+                - INVALID_ORDER_STATUS
+                - INVALID_TRACKING_STATUS
+                - INVALID_INCIDENT_DESCRIPTION
+                - ORDER_NOT_SHIPPED_BY_SANDBOX
+                - ORDER_ALREADY_DELIVERED
+                - SAME_TRACKING_STATUS
+    SandboxReplenishment:
+      type: object
+      properties:
+        id: {type: integer, description: Replenishment ID.}
+        store_id: {type: integer}
+        status: {type: string, description: Always `COMPLETED` on success., example: COMPLETED}
+        completed_at: {type: string, format: date-time, description: When the replenishment was completed (UTC).}
+    SandboxOrderShipment:
+      type: object
+      properties:
+        id: {type: integer, description: Cubbo order ID.}
+        order_number: {type: string}
+        store_id: {type: integer}
+        status: {type: string, description: Order status. `shipped` after a sandbox shipment., example: shipped}
+        shipping_status:
+          type: [string, 'null']
+          description: Tracking status of the shipment. `null` until the first tracking event.
+          enum: [null, shipment_collected, shipment_in_transit, shipment_out_for_delivery, shipment_with_incident, shipment_delivered]
+        tracking_number: {type: string, description: Test tracking number. Always starts with `SANDBOX-`.}
+        carrier_name: {type: string, description: Carrier of the order's shipping method.}
+    SandboxTrackingRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          description: The tracking status to simulate.
+          enum: [shipment_collected, shipment_in_transit, shipment_out_for_delivery, shipment_with_incident, shipment_delivered]
+        incident_description:
+          type: string
+          description: Reason for the incident. Only with `status` `shipment_with_incident`; optional there.
+          enum: [not_at_home, missing_references, refused_payment, refused_package, client_requested, delivery_failed, damaged, lost, stolen]
+  responses:
+    SandboxForbidden:
+      description: The sandbox is turned off, or the store is not a test store.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/SandboxError'}
+          examples:
+            notATestStore:
+              summary: Not a test store
+              value:
+                error: {message: "Sandbox endpoints only work on test stores. Ask your Cubbo account manager for a test store.", code: NOT_A_TEST_STORE}
+            disabled:
+              summary: Sandbox turned off
+              value:
+                error: {message: "The sandbox is not available right now.", code: SANDBOX_DISABLED}
+    SandboxNotFound:
+      description: The record does not exist or belongs to a store your credentials cannot access.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/SandboxError'}
+          example:
+            error: {message: "Order not found.", code: NOT_FOUND}
+    SandboxUnexpectedError:
+      description: Unexpected error. Retry later and contact Cubbo support if it persists.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/SandboxError'}
+          example:
+            error: {message: "unexpected error", code: UNEXPECTED_ERROR}
