@@ -67,24 +67,43 @@ paths:
         content:
           application/json:
             schema: {$ref: '#/components/schemas/OrderUpdateRequest'}
-            example:
-              store_id: 1234
-              is_paid: true
-              shipping_method_id: 77
-              shipping:
-                first_name: "Jane"
-                last_name: "Buyer"
-                phone: "5551234567"
-                address1: "Calle Falsa 123"
-                address2: "Depto 4"
-                interior_number: "4"
-                country: "MX"
-                city: "Ciudad de Mexico"
-                province: "CDMX"
-                zip_code: "06600"
-              products:
-                - {sku: "SKU-RED-M", quantity: 2}
-                - {sku: "SKU-BLUE-L", quantity: 1}
+            examples:
+              basic:
+                summary: Mexico, new address and products
+                value:
+                  store_id: 1234
+                  is_paid: true
+                  shipping_method_id: 77
+                  shipping:
+                    first_name: "Jane"
+                    last_name: "Buyer"
+                    phone: "5551234567"
+                    address1: "Calle Falsa 123"
+                    address2: "Depto 4"
+                    interior_number: "4"
+                    country: "MX"
+                    city: "Ciudad de Mexico"
+                    province: "CDMX"
+                    zip_code: "06600"
+                  products:
+                    - {sku: "SKU-RED-M", quantity: 2}
+                    - {sku: "SKU-BLUE-L", quantity: 1}
+              colombiaCityCode:
+                summary: Colombia, correcting the DANE code of the city
+                value:
+                  store_id: 1234
+                  shipping_method_id: 56
+                  shipping:
+                    first_name: "Ana"
+                    last_name: "Gómez"
+                    phone: "5555555555"
+                    address1: "Calle 100 # 10-20"
+                    country: "CO"
+                    city: "Bogotá"
+                    province: "Bogotá, D.C."
+                    city_code: "11001"
+                  products:
+                    - {sku: "SKU-RED-M", quantity: 1}
       responses:
         '200':
           description: The updated order (with its order lines) as saved, before re-processing.
@@ -106,6 +125,7 @@ paths:
                   state: "CDMX"
                   zip_code: "06600"
                   country: "MX"
+                  city_code: null
                 order_lines:
                   - {sku: "SKU-RED-M", quantity: 2}
                   - {sku: "SKU-BLUE-L", quantity: 1}
