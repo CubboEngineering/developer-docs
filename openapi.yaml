@@ -6897,6 +6897,12 @@ components:
           description: Free-text description
           default: null
           example: Store provisioned via API
+        tax_state_phone:
+          type: string
+          description: >-
+            Phone of the new store. When omitted or blank, the source store's phone is copied; if the source
+            store has none, the new store has none either.
+          example: "5555555555"
         source_shipping_group_ids:
           type: array
           description: >-
@@ -16090,8 +16096,9 @@ paths:
       description: |
         Creates a new store in the same account as an existing store (`source_store_id`) used as
         a template. The new store inherits the source store's billing configuration and, unless
-        you override them, its store type and warehouse. Your credential must have access to the
-        source store, and the source store must already have a billing configuration.
+        you override them, its store type, warehouse and phone (`tax_state_phone`). Your
+        credential must have access to the source store, and the source store must already have
+        a billing configuration.
 
         - Send `source_shipping_group_ids` to copy specific shipping groups from the source store
           instead of receiving the country defaults. Doing so also creates an Open API
@@ -16109,6 +16116,10 @@ paths:
         - The returned `client_secret` and `webhook_consumer_secret` are shown only in this
           response. The credential grants access to every store of the same account, so treat it
           as an account-level secret.
+        - `tax_state_phone` is the new store's phone, used as the sender phone on shipping labels
+          and on invoices where the store is the recipient. When you omit it or send it blank, the
+          source store's phone is copied; if the source store has none, the new store has none
+          either. You can change it later with `PATCH /store`.
         - The whole operation is transactional: on any validation failure nothing is created.
       security:
         - bearerAuth: []
@@ -16124,6 +16135,7 @@ paths:
               created_by_email: integrations@example.com
               store_type: ALL_SERVICES
               description: Store provisioned via API
+              tax_state_phone: "5555555555"
               source_shipping_group_ids:
                 - 101
                 - 102
@@ -16158,7 +16170,7 @@ paths:
                 tax_address_neighborhood: null
                 tax_city: null
                 tax_zipcode: null
-                tax_state_phone: null
+                tax_state_phone: "5555555555"
                 tax_state_registration: null
                 store_type: ALL_SERVICES
                 b2b: false
