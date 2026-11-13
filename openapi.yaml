@@ -8616,8 +8616,8 @@ components:
         occurred_at:
           type: string
           format: date-time
-          description: When the moment happened.
-          example: "2026-11-13T11:40:00-06:00"
+          description: When the moment happened, in UTC.
+          example: "2026-11-13T17:40:00Z"
         store_id:
           type: integer
           description: Cubbo store id.
@@ -17042,7 +17042,8 @@ webhooks:
 
         - This feed must be enabled for your integration (opt-in, with its own URL). It does not require
           the order webhook feed.
-        - `X-Cubbo-Idempotency-Key` is deterministic (`return:<return id>:returnArrived:<integration>`).
+        - `X-Cubbo-Idempotency-Key` is deterministic (`return:<return id>:<event>:<sequence>:<integration>`):
+          a retry carries the same key.
       parameters:
         - $ref: "#/components/parameters/WebhookEventHeader"
         - $ref: "#/components/parameters/WebhookMessageIdHeader"
@@ -17059,7 +17060,7 @@ webhooks:
               $ref: "#/components/schemas/ReturnArrivedEvent"
             example:
               event: returnArrived
-              occurred_at: "2026-11-13T09:12:00-06:00"
+              occurred_at: "2026-11-13T15:12:00Z"
               store_id: 1234
               return_id: 456789
               order_id: 987654
@@ -17108,7 +17109,7 @@ webhooks:
               $ref: "#/components/schemas/ReturnInspectedEvent"
             example:
               event: returnInspected
-              occurred_at: "2026-11-13T11:40:00-06:00"
+              occurred_at: "2026-11-13T17:40:00Z"
               store_id: 1234
               return_id: 456789
               order_id: 987654
@@ -17164,7 +17165,7 @@ webhooks:
               $ref: "#/components/schemas/ReturnDivergenceEvent"
             example:
               event: returnDivergence
-              occurred_at: "2026-11-13T11:40:00-06:00"
+              occurred_at: "2026-11-13T17:40:00Z"
               store_id: 1234
               return_id: 456789
               order_id: 987654
@@ -17198,8 +17199,8 @@ webhooks:
         - `not_restocked_quantity` counts the units the inspection set aside as not sellable: damaged,
           expired or held.
         - Units already stored are sellable before this event; it marks the end of the return.
-        - If the warehouse reopens and closes the return reception again, this event is sent again with
-          the same `X-Cubbo-Idempotency-Key` and the same counts.
+        - If the warehouse reopens and closes the return reception again, this event is sent again as a
+          new event, with a new `sequence` and a new `X-Cubbo-Idempotency-Key`.
         - The return's `status` does not always read as restocked (a carrier return never becomes
           `REENTERED`); rely on this event instead.
       parameters:
@@ -17218,7 +17219,7 @@ webhooks:
               $ref: "#/components/schemas/ReturnRestockedEvent"
             example:
               event: returnRestocked
-              occurred_at: "2026-11-13T16:05:00-06:00"
+              occurred_at: "2026-11-13T22:05:00Z"
               store_id: 1234
               return_id: 456789
               order_id: 987654
