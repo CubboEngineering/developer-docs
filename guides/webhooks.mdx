@@ -1,6 +1,6 @@
 ---
 title: "Webhooks"
-description: "Receive signed HTTPS notifications when orders, shipments, inventory and replenishments change."
+description: "Receive signed HTTPS notifications when orders, shipments, inventory, replenishments and returns change."
 ---
 
 Cubbo sends an HTTPS `POST` to your endpoint when something changes on your account. Use webhooks instead
@@ -17,6 +17,10 @@ of polling list endpoints.
 | `replenishmentCreated` | Replenishments | A replenishment is created. |
 | `replenishmentScheduled` | Replenishments | A receiving appointment for a replenishment is booked or canceled. |
 | `replenishmentStatus` | Replenishments | A replenishment moves to processing, putaway, completed or canceled. |
+| `returnArrived` | Returns | A return parcel is scanned at the warehouse dock. |
+| `returnInspected` | Returns | The warehouse finishes checking in a return: units counted, condition recorded. Also sent when nothing arrived. |
+| `returnDivergence` | Returns | Right after `returnInspected`, only when what arrived differs from what was declared: missing, extra, different or damaged items. |
+| `returnRestocked` | Returns | The return leaves reception and its units in good condition are available for sale again. |
 
 The event name travels in the `X-Webhook-Event` header. Route on that header, not on the URL. The full payload
 of each event is in the API reference under **Webhooks**.
@@ -35,7 +39,11 @@ URLs, add custom headers, test the URL and copy the shared secret. See [Set up y
 
 If your endpoint requires OAuth client credentials, ask your Cubbo contact to configure them.
 
-The inventory feed only sends while the orders feed is enabled. The replenishments feed is independent.
+The inventory feed only sends while the orders feed is enabled. The replenishments and returns feeds are independent.
+
+The returns feed has its own URL. To turn it on for an existing integration, ask your Cubbo contact. A store you
+create through `POST /v1/stores` with a `webhook_consumer_url` gets it by default, unless you narrow
+`webhook_feeds`.
 
 ### Connectivity test
 
@@ -57,7 +65,7 @@ Answer `2xx` within 10 seconds. Accept this ping even though it is unsigned, or 
 | `isa` | Issued-at time, Unix seconds. |
 | `exp` | Expiration time, Unix seconds. Always `isa` plus 300. |
 | `X-Cubbo-Hmac-SHA256` | Signature, 64 lowercase hex characters. |
-| `X-Cubbo-Idempotency-Key` | Stable key for deduplication. Sent on `shippingUpdated`, `inventoryMovement` and replenishment events. |
+| `X-Cubbo-Idempotency-Key` | Stable key for deduplication. Sent on `shippingUpdated`, `inventoryMovement`, replenishment and return events. |
 | `Authorization` | `Bearer <token>`, only when OAuth is configured for your endpoint. |
 
 Static headers configured for your integration are added as well.
@@ -143,10 +151,14 @@ responses risk a timeout and a retry.
 | Feed | Retries | Retry window |
 |---|---|---|
 | Orders | Up to 14 | About 26 hours |
-| Inventory and replenishments | Up to 5 | About 10 minutes |
+| Inventory, replenishments and returns | Up to 5 | About 10 minutes |
 
 Inventory and replenishment events are delivered one at a time per integration, in order. A failing delivery
 holds back the events behind it until it succeeds or runs out of retries.
+
+Return events are also delivered one at a time per integration, but events of one return can arrive out of order:
+for example `returnRestocked` before `returnInspected` when nothing came back in sellable condition. Order them by
+`sequence`.
 
 <Warning>
 Do not answer `400` or `401` while your endpoint is being deployed or misconfigured. Cubbo treats those as
@@ -164,6 +176,7 @@ Retries resend the same body, but with a new message ID, `isa`, `exp` and signat
 | `shippingUpdated` | `X-Cubbo-Idempotency-Key`. When it is absent, use `order_number` and `status`. |
 | `inventoryMovement` | `X-Cubbo-Idempotency-Key`. Also skip any event whose `sequence` is not greater than the last one you processed for that store. |
 | `replenishmentCreated`, `replenishmentScheduled`, `replenishmentStatus` | `X-Cubbo-Idempotency-Key`. |
+| `returnArrived`, `returnInspected`, `returnDivergence`, `returnRestocked` | `X-Cubbo-Idempotency-Key`. |
 
 Keep processed keys for at least 26 hours, the longest retry window. `sequence` values grow but can skip
 numbers, so do not expect them to increase by one.

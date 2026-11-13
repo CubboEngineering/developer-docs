@@ -6825,10 +6825,12 @@ components:
               - order_status
               - inventory_movement
               - replenishment_status
+              - return_status
           example:
             - order_status
             - inventory_movement
             - replenishment_status
+            - return_status
         webhook_consumer_secret:
           type:
             - string
@@ -6924,13 +6926,14 @@ components:
           type: array
           description: >-
             Feeds to deliver to `webhook_consumer_url`. Requires `webhook_consumer_url`. Omitted means all
-            three.
+            four.
           items:
             type: string
             enum:
               - order_status
               - inventory_movement
               - replenishment_status
+              - return_status
           example:
             - order_status
     StoreUpdateRequest:
@@ -8589,6 +8592,252 @@ components:
           type: string
           description: Supplier invoice number.
           example: F-0001
+    ReturnEvent:
+      type: object
+      description: Common payload of the return events.
+      required:
+        - event
+        - occurred_at
+        - store_id
+        - return_id
+        - return_type
+        - status
+        - sequence
+      properties:
+        event:
+          type: string
+          description: Event name.
+          enum:
+            - returnArrived
+            - returnInspected
+            - returnDivergence
+            - returnRestocked
+          example: returnInspected
+        occurred_at:
+          type: string
+          format: date-time
+          description: When the moment happened, in UTC.
+          example: "2026-11-13T17:40:00Z"
+        store_id:
+          type: integer
+          description: Cubbo store id.
+          example: 1234
+        return_id:
+          type: integer
+          description: Cubbo return id, the same id as in the Returns endpoints.
+          example: 456789
+        order_id:
+          type:
+            - integer
+            - "null"
+          description: Cubbo id of the returned order. `null` for an unidentified return.
+          example: 987654
+        order_number:
+          type:
+            - string
+            - "null"
+          description: Order number of the returned order. `null` for an unidentified return.
+          example: ORD-10023
+        return_type:
+          type: string
+          description: Type of the return.
+          enum:
+            - SIMPLE_RETURN
+            - EXCHANGE
+            - IMMEDIATE_EXCHANGE
+            - RETURNED_BY_CARRIER
+            - UNIDENTIFIED
+            - TO_BE_DETERMINED
+          example: SIMPLE_RETURN
+        status:
+          type: string
+          description: Status of the return at the moment of the event.
+          enum:
+            - REQUESTED
+            - PENDING
+            - ORDERED
+            - CANCELLED
+            - RECEIVED
+            - ARRIVED_AT_WAREHOUSE
+            - AWAITING_INSPECTION
+            - REENTERED
+            - UNSUCCESSFUL
+          example: RECEIVED
+        sequence:
+          type: integer
+          format: int64
+          description: |
+            Ordering hint; epoch milliseconds of the moment that produced the event. Events of one
+            return can arrive out of order, so order them by this value. It is not contiguous.
+          example: 1794591600000
+      additionalProperties: true
+    ReturnArrivedEvent:
+      description: Payload of the `returnArrived` event.
+      allOf:
+        - $ref: "#/components/schemas/ReturnEvent"
+        - type: object
+          properties:
+            event:
+              type: string
+              enum:
+                - returnArrived
+    ReturnInspectedEvent:
+      description: Payload of the `returnInspected` event.
+      allOf:
+        - $ref: "#/components/schemas/ReturnEvent"
+        - type: object
+          required:
+            - items
+          properties:
+            event:
+              type: string
+              enum:
+                - returnInspected
+            items:
+              type: array
+              description: Declared, received, damaged and missing units per product.
+              items:
+                $ref: "#/components/schemas/WebhookReturnInspectedItem"
+    ReturnDivergenceEvent:
+      description: Payload of the `returnDivergence` event.
+      allOf:
+        - $ref: "#/components/schemas/ReturnEvent"
+        - type: object
+          required:
+            - divergences
+          properties:
+            event:
+              type: string
+              enum:
+                - returnDivergence
+            divergences:
+              type: array
+              description: Every difference between the declaration and the check-in.
+              items:
+                $ref: "#/components/schemas/WebhookReturnDivergence"
+    ReturnRestockedEvent:
+      description: Payload of the `returnRestocked` event.
+      allOf:
+        - $ref: "#/components/schemas/ReturnEvent"
+        - type: object
+          required:
+            - items
+          properties:
+            event:
+              type: string
+              enum:
+                - returnRestocked
+            items:
+              type: array
+              description: Units back in stock and units set aside per product.
+              items:
+                $ref: "#/components/schemas/WebhookReturnRestockedItem"
+    WebhookReturnInspectedItem:
+      type: object
+      description: Inspection result of one product of the return.
+      required:
+        - skus
+        - declared_quantity
+        - received_quantity
+        - damaged_quantity
+        - missing_quantity
+      properties:
+        product_code:
+          type:
+            - string
+            - "null"
+          description: Product bar code.
+          example: "7501234567890"
+        skus:
+          type: array
+          description: All SKUs of the product.
+          items:
+            type: string
+          example:
+            - SKU-RED-M
+        declared_quantity:
+          type:
+            - integer
+            - "null"
+          description: >-
+            Units declared on the return, or the order's units for a carrier return. `null` when there is
+            nothing to compare against.
+          example: 2
+        received_quantity:
+          type: integer
+          description: Units checked in, damaged units included.
+          example: 1
+        damaged_quantity:
+          type: integer
+          description: Units that arrived damaged.
+          example: 0
+        missing_quantity:
+          type: integer
+          description: Units the warehouse flagged as missing from the parcel.
+          example: 1
+    WebhookReturnDivergence:
+      type: object
+      description: One difference between the declaration and the check-in.
+      required:
+        - type
+        - skus
+        - quantity
+      properties:
+        type:
+          type: string
+          description: Kind of difference.
+          enum:
+            - MISSING
+            - EXTRA
+            - UNEXPECTED_PRODUCT
+            - DAMAGED
+          example: MISSING
+        product_code:
+          type:
+            - string
+            - "null"
+          description: Product bar code.
+          example: "7501234567890"
+        skus:
+          type: array
+          description: All SKUs of the product.
+          items:
+            type: string
+          example:
+            - SKU-RED-M
+        quantity:
+          type: integer
+          description: Units affected.
+          example: 1
+    WebhookReturnRestockedItem:
+      type: object
+      description: Restock result of one product of the return.
+      required:
+        - skus
+        - restocked_quantity
+        - not_restocked_quantity
+      properties:
+        product_code:
+          type:
+            - string
+            - "null"
+          description: Product bar code.
+          example: "7501234567890"
+        skus:
+          type: array
+          description: All SKUs of the product.
+          items:
+            type: string
+          example:
+            - SKU-RED-M
+        restocked_quantity:
+          type: integer
+          description: Units available for sale again.
+          example: 1
+        not_restocked_quantity:
+          type: integer
+          description: Units set aside as not sellable at inspection (damaged, expired or held).
+          example: 0
   responses:
     Unauthorized:
       description: Missing or invalid token, wrong credentials, or no access to the requested store.
@@ -8659,7 +8908,8 @@ components:
       required: true
       description: |
         Name of the event (`orderUpdated`, `orderFulfilled`, `shippingUpdated`, `inventoryMovement`,
-        `replenishmentStatus`, `replenishmentCreated`, `replenishmentScheduled`). Route on this header,
+        `replenishmentStatus`, `replenishmentCreated`, `replenishmentScheduled`, `returnArrived`,
+        `returnInspected`, `returnDivergence`, `returnRestocked`). Route on this header,
         not on the URL: all feeds can share one endpoint. Treat a request without this header as an order
         event.
       schema:
@@ -8672,6 +8922,10 @@ components:
           - replenishmentStatus
           - replenishmentCreated
           - replenishmentScheduled
+          - returnArrived
+          - returnInspected
+          - returnDivergence
+          - returnRestocked
       example: shippingUpdated
     WebhookMessageIdHeader:
       name: X-Cubbo-Webhook-Message-Id
@@ -8717,9 +8971,12 @@ components:
       name: X-Cubbo-Idempotency-Key
       in: header
       required: false
-      description: |
+      description: >
         Stable key for the event: identical on every retry of the same event. Sent on `shippingUpdated`
-        (carrier tracking events), `inventoryMovement` and the replenishment events. Not sent on
+
+        (carrier tracking events), `inventoryMovement`, the replenishment events and the return events. Not
+        sent on
+
         `orderUpdated` or `orderFulfilled`. Store the keys you have processed and ignore repeats.
       schema:
         type: string
@@ -16133,6 +16390,7 @@ paths:
                 - order_status
                 - inventory_movement
                 - replenishment_status
+                - return_status
       responses:
         "201":
           description: >-
@@ -16189,6 +16447,7 @@ paths:
                     - order_status
                     - inventory_movement
                     - replenishment_status
+                    - return_status
                   webhook_consumer_secret: <webhook-secret-shown-once>
                   webhook_consumer_secret_reason: null
         "401":
@@ -16249,7 +16508,7 @@ paths:
                   value:
                     error: >-
                       Parameter webhook_feeds[1] must be within ["order_status", "inventory_movement",
-                      "replenishment_status"]
+                      "replenishment_status", "return_status"]
                 noShippingGroupsFound:
                   value:
                     error: No shipping groups found on source store 1234 for the given ids
@@ -16764,6 +17023,216 @@ webhooks:
                   sell_ahead: false
                   appointment_date: null
                   sequence: 1791500000000
+      responses:
+        2XX:
+          description: |
+            Acknowledge receipt with any 2xx status. The response body is ignored. A 429 or any 5xx
+            response is retried; any other 4xx response is treated as a permanent rejection and is not
+            retried.
+  returnArrived:
+    post:
+      tags:
+        - Webhooks
+      summary: Return arrived at the warehouse
+      operationId: webhookReturnArrived
+      description: |
+        Cubbo sends this event to your return webhook URL when the return parcel is scanned at the
+        warehouse dock. A return that is checked in without a dock scan does not produce this event;
+        `returnInspected` is then the first event of that return.
+
+        - This feed must be enabled for your integration (opt-in, with its own URL). It does not require
+          the order webhook feed.
+        - `X-Cubbo-Idempotency-Key` is deterministic (`return:<return id>:<event>:<sequence>:<integration>`):
+          a retry carries the same key.
+      parameters:
+        - $ref: "#/components/parameters/WebhookEventHeader"
+        - $ref: "#/components/parameters/WebhookMessageIdHeader"
+        - $ref: "#/components/parameters/WebhookSignatureHeader"
+        - $ref: "#/components/parameters/WebhookIssuedAtHeader"
+        - $ref: "#/components/parameters/WebhookExpiresAtHeader"
+        - $ref: "#/components/parameters/WebhookIdempotencyKeyHeader"
+        - $ref: "#/components/parameters/WebhookAuthorizationHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReturnArrivedEvent"
+            example:
+              event: returnArrived
+              occurred_at: "2026-11-13T15:12:00Z"
+              store_id: 1234
+              return_id: 456789
+              order_id: 987654
+              order_number: ORD-10023
+              return_type: SIMPLE_RETURN
+              status: ARRIVED_AT_WAREHOUSE
+              sequence: 1794582720000
+      responses:
+        2XX:
+          description: |
+            Acknowledge receipt with any 2xx status. The response body is ignored. A 429 or any 5xx
+            response is retried; any other 4xx response is treated as a permanent rejection and is not
+            retried.
+  returnInspected:
+    post:
+      tags:
+        - Webhooks
+      summary: Return inspected
+      operationId: webhookReturnInspected
+      description: |
+        Cubbo sends this event when the warehouse finishes checking in the return: units are counted
+        and their condition is recorded. It is also sent when nothing arrived in the parcel and the
+        return is closed with status `UNSUCCESSFUL`.
+
+        - `items` compares, per product, what was declared on the return with what was received,
+          damaged and missing. `received_quantity` includes the damaged units.
+        - `declared_quantity` is what the return declared. A carrier return has no declaration, so the
+          whole order is used. It is `null` when there is nothing to compare against: unidentified
+          returns, returns without a declaration that are not carrier returns, and one box of a
+          multi-package carrier return.
+        - `status` is the return's status at the moment of the inspection.
+        - When something differs from the declaration, a `returnDivergence` event follows.
+      parameters:
+        - $ref: "#/components/parameters/WebhookEventHeader"
+        - $ref: "#/components/parameters/WebhookMessageIdHeader"
+        - $ref: "#/components/parameters/WebhookSignatureHeader"
+        - $ref: "#/components/parameters/WebhookIssuedAtHeader"
+        - $ref: "#/components/parameters/WebhookExpiresAtHeader"
+        - $ref: "#/components/parameters/WebhookIdempotencyKeyHeader"
+        - $ref: "#/components/parameters/WebhookAuthorizationHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReturnInspectedEvent"
+            example:
+              event: returnInspected
+              occurred_at: "2026-11-13T17:40:00Z"
+              store_id: 1234
+              return_id: 456789
+              order_id: 987654
+              order_number: ORD-10023
+              return_type: SIMPLE_RETURN
+              status: RECEIVED
+              items:
+                - product_code: "7501234567890"
+                  skus:
+                    - SKU-RED-M
+                  declared_quantity: 2
+                  received_quantity: 1
+                  damaged_quantity: 0
+                  missing_quantity: 1
+              sequence: 1794591600000
+      responses:
+        2XX:
+          description: |
+            Acknowledge receipt with any 2xx status. The response body is ignored. A 429 or any 5xx
+            response is retried; any other 4xx response is treated as a permanent rejection and is not
+            retried.
+  returnDivergence:
+    post:
+      tags:
+        - Webhooks
+      summary: Return differs from the declaration
+      operationId: webhookReturnDivergence
+      description: |
+        Cubbo sends this event right after `returnInspected`, only when what arrived differs from what
+        was declared. A return that matches its declaration never produces it.
+
+        - `MISSING`: fewer units arrived than declared.
+        - `EXTRA`: more units of a declared product arrived than declared.
+        - `UNEXPECTED_PRODUCT`: a product that was not declared arrived (a different item).
+        - `DAMAGED`: units arrived damaged and do not go back to stock.
+
+        Returns checked in as part of a bulk session (whole packages, not individual pieces) and
+        returns with a `null` `declared_quantity` do not produce this event. `sequence` is the
+        `returnInspected` sequence plus one, so it sorts after the inspection it explains.
+      parameters:
+        - $ref: "#/components/parameters/WebhookEventHeader"
+        - $ref: "#/components/parameters/WebhookMessageIdHeader"
+        - $ref: "#/components/parameters/WebhookSignatureHeader"
+        - $ref: "#/components/parameters/WebhookIssuedAtHeader"
+        - $ref: "#/components/parameters/WebhookExpiresAtHeader"
+        - $ref: "#/components/parameters/WebhookIdempotencyKeyHeader"
+        - $ref: "#/components/parameters/WebhookAuthorizationHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReturnDivergenceEvent"
+            example:
+              event: returnDivergence
+              occurred_at: "2026-11-13T17:40:00Z"
+              store_id: 1234
+              return_id: 456789
+              order_id: 987654
+              order_number: ORD-10023
+              return_type: SIMPLE_RETURN
+              status: RECEIVED
+              divergences:
+                - type: MISSING
+                  product_code: "7501234567890"
+                  skus:
+                    - SKU-RED-M
+                  quantity: 1
+              sequence: 1794591600001
+      responses:
+        2XX:
+          description: |
+            Acknowledge receipt with any 2xx status. The response body is ignored. A 429 or any 5xx
+            response is retried; any other 4xx response is treated as a permanent rejection and is not
+            retried.
+  returnRestocked:
+    post:
+      tags:
+        - Webhooks
+      summary: Return units back in stock
+      operationId: webhookReturnRestocked
+      description: |
+        Cubbo sends this event when the return leaves reception: the units in good condition are
+        available for sale again. When nothing came back in sellable condition, it is sent right after
+        the inspection with `restocked_quantity: 0`.
+
+        - `not_restocked_quantity` counts the units the inspection set aside as not sellable: damaged,
+          expired or held.
+        - Units already stored are sellable before this event; it marks the end of the return.
+        - If the warehouse reopens and closes the return reception again, this event is sent again as a
+          new event, with a new `sequence` and a new `X-Cubbo-Idempotency-Key`.
+        - The return's `status` does not always read as restocked (a carrier return never becomes
+          `REENTERED`); rely on this event instead.
+      parameters:
+        - $ref: "#/components/parameters/WebhookEventHeader"
+        - $ref: "#/components/parameters/WebhookMessageIdHeader"
+        - $ref: "#/components/parameters/WebhookSignatureHeader"
+        - $ref: "#/components/parameters/WebhookIssuedAtHeader"
+        - $ref: "#/components/parameters/WebhookExpiresAtHeader"
+        - $ref: "#/components/parameters/WebhookIdempotencyKeyHeader"
+        - $ref: "#/components/parameters/WebhookAuthorizationHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReturnRestockedEvent"
+            example:
+              event: returnRestocked
+              occurred_at: "2026-11-13T22:05:00Z"
+              store_id: 1234
+              return_id: 456789
+              order_id: 987654
+              order_number: ORD-10023
+              return_type: SIMPLE_RETURN
+              status: REENTERED
+              items:
+                - product_code: "7501234567890"
+                  skus:
+                    - SKU-RED-M
+                  restocked_quantity: 1
+                  not_restocked_quantity: 0
+              sequence: 1794607500000
       responses:
         2XX:
           description: |

@@ -145,6 +145,7 @@ paths:
                 - order_status
                 - inventory_movement
                 - replenishment_status
+                - return_status
       responses:
         "201":
           description: >-
@@ -201,6 +202,7 @@ paths:
                     - order_status
                     - inventory_movement
                     - replenishment_status
+                    - return_status
                   webhook_consumer_secret: <webhook-secret-shown-once>
                   webhook_consumer_secret_reason: null
         "401":
@@ -261,7 +263,7 @@ paths:
                   value:
                     error: >-
                       Parameter webhook_feeds[1] must be within ["order_status", "inventory_movement",
-                      "replenishment_status"]
+                      "replenishment_status", "return_status"]
                 noShippingGroupsFound:
                   value:
                     error: No shipping groups found on source store 1234 for the given ids
@@ -1726,10 +1728,12 @@ components:
               - order_status
               - inventory_movement
               - replenishment_status
+              - return_status
           example:
             - order_status
             - inventory_movement
             - replenishment_status
+            - return_status
         webhook_consumer_secret:
           type:
             - string
@@ -1825,13 +1829,14 @@ components:
           type: array
           description: >-
             Feeds to deliver to `webhook_consumer_url`. Requires `webhook_consumer_url`. Omitted means all
-            three.
+            four.
           items:
             type: string
             enum:
               - order_status
               - inventory_movement
               - replenishment_status
+              - return_status
           example:
             - order_status
     StoreUpdateRequest:
