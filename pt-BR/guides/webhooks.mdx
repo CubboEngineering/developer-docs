@@ -1,6 +1,6 @@
 ---
 title: "Webhooks"
-description: "Receba notificações HTTPS assinadas quando pedidos, envios, inventário e recebimentos mudarem."
+description: "Receba notificações HTTPS assinadas quando pedidos, envios, inventário, recebimentos e devoluções mudarem."
 ---
 
 A Cubbo envia um `POST` HTTPS para o seu endpoint quando algo muda na sua conta. Use webhooks em vez
@@ -17,6 +17,10 @@ de consultar periodicamente os endpoints de listagem.
 | `replenishmentCreated` | Recebimentos | Um recebimento (replenishment) é criado. |
 | `replenishmentScheduled` | Recebimentos | Um agendamento de recebimento é marcado ou cancelado. |
 | `replenishmentStatus` | Recebimentos | Um recebimento passa para processamento, armazenagem (putaway), concluído ou cancelado. |
+| `returnArrived` | Devoluções | O pacote de uma devolução é escaneado na doca do armazém. |
+| `returnInspected` | Devoluções | O armazém termina a conferência de uma devolução: unidades contadas e estado registrado. Também é enviado quando nada chegou. |
+| `returnDivergence` | Devoluções | Logo depois de `returnInspected`, só quando o que chegou difere do declarado: itens faltando, a mais, diferentes ou avariados. |
+| `returnRestocked` | Devoluções | A devolução sai da recepção e as unidades em bom estado voltam a ficar disponíveis para venda. |
 
 O nome do evento vem no header `X-Webhook-Event`. Faça o roteamento por esse header, não pela URL. O payload completo
 de cada evento está na referência da API, em **Webhooks**.
@@ -35,7 +39,11 @@ adiciona headers personalizados, testa a URL e copia o segredo compartilhado. Ve
 
 Se o seu endpoint exige credenciais de cliente OAuth, peça ao seu contato na Cubbo para configurá-las.
 
-O feed de inventário só envia eventos enquanto o feed de pedidos estiver ativado. O feed de recebimentos é independente.
+O feed de inventário só envia eventos enquanto o feed de pedidos estiver ativado. Os feeds de recebimentos e de devoluções são independentes.
+
+O feed de devoluções tem uma URL própria. Para ativá-lo numa integração existente, fale com o seu contato Cubbo. Uma loja
+criada por `POST /v1/stores` com `webhook_consumer_url` já o recebe por padrão, a menos que você restrinja
+`webhook_feeds`.
 
 ### Teste de conectividade
 
@@ -57,7 +65,7 @@ Responda `2xx` em até 10 segundos. Aceite esse ping mesmo que ele não seja ass
 | `isa` | Momento de emissão, em segundos Unix. |
 | `exp` | Momento de expiração, em segundos Unix. Sempre `isa` mais 300. |
 | `X-Cubbo-Hmac-SHA256` | Assinatura, 64 caracteres hexadecimais em minúsculas. |
-| `X-Cubbo-Idempotency-Key` | Chave estável para deduplicação. Enviada em `shippingUpdated`, `inventoryMovement` e nos eventos de recebimento. |
+| `X-Cubbo-Idempotency-Key` | Chave estável para deduplicação. Enviada em `shippingUpdated`, `inventoryMovement` e nos eventos de recebimento e de devolução. |
 | `Authorization` | `Bearer <token>`, somente quando OAuth está configurado para o seu endpoint. |
 
 Os headers estáticos configurados para a sua integração também são adicionados.
@@ -143,10 +151,14 @@ lentas correm o risco de timeout e de uma nova tentativa.
 | Feed | Novas tentativas | Janela de novas tentativas |
 |---|---|---|
 | Pedidos | Até 14 | Cerca de 26 horas |
-| Inventário e recebimentos | Até 5 | Cerca de 10 minutos |
+| Inventário, recebimentos e devoluções | Até 5 | Cerca de 10 minutos |
 
 Os eventos de inventário e de recebimento são entregues um de cada vez por integração, em ordem. Uma entrega com falha
 retém os eventos seguintes até ser bem-sucedida ou esgotar as novas tentativas.
+
+Os eventos de devolução também são entregues um de cada vez por integração, mas os eventos de uma mesma devolução podem
+chegar fora de ordem: por exemplo `returnRestocked` antes de `returnInspected` quando nada voltou em condição de venda.
+Ordene-os por `sequence`.
 
 <Warning>
 Não responda `400` ou `401` enquanto seu endpoint estiver sendo implantado ou mal configurado. A Cubbo trata essas respostas como
@@ -164,6 +176,7 @@ As novas tentativas reenviam o mesmo corpo, mas com um novo ID de mensagem, `isa
 | `shippingUpdated` | `X-Cubbo-Idempotency-Key`. Quando estiver ausente, use `order_number` e `status`. |
 | `inventoryMovement` | `X-Cubbo-Idempotency-Key`. Ignore também qualquer evento cujo `sequence` não seja maior que o último que você processou para essa loja. |
 | `replenishmentCreated`, `replenishmentScheduled`, `replenishmentStatus` | `X-Cubbo-Idempotency-Key`. |
+| `returnArrived`, `returnInspected`, `returnDivergence`, `returnRestocked` | `X-Cubbo-Idempotency-Key`. |
 
 Guarde as chaves processadas por pelo menos 26 horas, a maior janela de novas tentativas. Os valores de `sequence` crescem, mas podem pular
 números, então não espere que aumentem de um em um.
