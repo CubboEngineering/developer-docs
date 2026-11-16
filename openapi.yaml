@@ -8741,6 +8741,7 @@ components:
         - received_quantity
         - damaged_quantity
         - missing_quantity
+        - shortfall_quantity
       properties:
         product_code:
           type:
@@ -8773,9 +8774,15 @@ components:
           example: 0
         missing_quantity:
           type: integer
+          description: Units the warehouse flagged as missing from the parcel.
+          example: 1
+        shortfall_quantity:
+          type:
+            - integer
+            - "null"
           description: |
             Declared units that did not arrive; the same number `returnDivergence` reports as `MISSING`.
-            When there is no declaration to compare against, the units the warehouse flagged as missing.
+            `null` when the check-in cannot be compared with a declaration.
           example: 1
     WebhookReturnDivergence:
       type: object
@@ -17088,7 +17095,9 @@ webhooks:
         return is closed with status `UNSUCCESSFUL`.
 
         - `items` compares, per product, what was declared on the return with what was received,
-          damaged and missing. `received_quantity` includes the damaged units.
+          damaged and missing. `received_quantity` includes the damaged units. `missing_quantity` is
+          what the warehouse flagged missing; `shortfall_quantity` is what was declared and did not
+          arrive (`null` when there is no declaration to compare against).
         - `declared_quantity` is what the return declared. A carrier return has no declaration, so the
           whole order is used. It is `null` when there is nothing to compare against: unidentified
           returns, returns without a declaration that are not carrier returns, and one box of a
@@ -17126,6 +17135,7 @@ webhooks:
                   received_quantity: 1
                   damaged_quantity: 0
                   missing_quantity: 1
+                  shortfall_quantity: 1
               sequence: 1794591600000
       responses:
         2XX:
