@@ -660,9 +660,10 @@ paths:
       summary: Create a lot or update its expiration date
       description: |
         Creates a lot for a product, or updates the expiration date of an existing lot. The lot is
-        identified by its unique code inside the store, which is built as `<sku>-<lot_code>` when
-        `sku` is sent, or is exactly `lot_code` when it is not.
-        - If no lot with that code exists, `sku` is required and must belong to a product of the store; the lot is created with the given `expiration_date` (optional).
+        identified by `lot_code` as you sent it in `POST /replenishments`. When you send `sku`, only
+        that product's lots are considered, so the same lot code can exist on different products.
+        Without `sku`, the lot code must be unique in the store.
+        - If no lot matches, `sku` is required and must belong to a product of the store; the lot is created with the given `expiration_date` (optional).
         - If the lot exists, only `expiration_date` is updated, and only when you send one; omitting it leaves the stored date untouched.
         - Moving the date into the future re-validates the lot shortly after the call: a lot that had been expired is reactivated, together with its stock units. Moving it into the past expires the lot.
         - `expiration_date` in the response is returned as an ISO 8601 timestamp at UTC midnight of the stored date.
@@ -678,7 +679,7 @@ paths:
               create:
                 value: {store_id: 1234, sku: SKU-RED-M, lot_code: L2026-04, expiration_date: "2026-12-31"}
               updateDate:
-                value: {store_id: 1234, lot_code: SKU-RED-M-L2026-04, expiration_date: "2027-01-15"}
+                value: {store_id: 1234, sku: SKU-RED-M, lot_code: L2026-04, expiration_date: "2027-01-15"}
       responses:
         '200':
           description: Lot created or updated.
@@ -687,7 +688,7 @@ paths:
               schema: {$ref: '#/components/schemas/LotUpsertResponse'}
               example:
                 id: 987
-                unique_code: SKU-RED-M-L2026-04
+                unique_code: L2026-04
                 expiration_date: "2026-12-31T00:00:00Z"
                 status: active
         '401': {$ref: '#/components/responses/Unauthorized'}
@@ -711,11 +712,15 @@ paths:
       operationId: holdLot
       summary: Put a lot on hold
       description: |
-        Withholds a lot's stock from fulfillment. The lot is identified by `<material_code>-<lot_code>`
-        (material code is the product SKU). The hold is applied asynchronously right after the call:
-        the lot moves to `HOLDED` and its sellable units stop being assigned to orders. Use
-        `POST /lots/unhold/store/{store_id}` to release it.
-        - The `status` in the response is the lot status at the moment of the request, in lowercase, so it still reads `active` on a successful hold request.
+        Withholds a lot's stock from fulfillment. Send the product's `sku` and the `lot_code` as you
+        sent it in `POST /replenishments`; only that product's lots are considered. The hold is applied
+        asynchronously right after the call: the lot moves to `HOLDED` and its sellable units stop being
+        assigned to orders. Use `POST /lots/unhold/store/{store_id}` to release it.
+        - Only an `ACTIVE` lot can be put on hold. Any other lot is left as it is.
+        - `status` in the response is the lot status at the moment of the request, in lowercase, so it still reads `active` on a successful hold request. `expected_status` is the status the hold should leave (`holded`, or the current status when the lot cannot be held). It is not a confirmation: read the lot again with `GET /lots` to see the result.
+        - The token needs permission to update products; otherwise the call answers `401`.
+        - `material_code` is accepted in place of `sku`, and is used when both are sent.
+        - A store with a lot-code convention agreed with Cubbo during onboarding (for example `<material_code>-<lot_code>`) keeps it: the lot is found by that combined code, in any of the store's products.
       security:
         - bearerAuth: []
       parameters:
@@ -730,14 +735,14 @@ paths:
         content:
           application/json:
             schema: {$ref: '#/components/schemas/LotHoldRequest'}
-            example: {material_code: SKU-RED-M, lot_code: L2026-04}
+            example: {sku: SKU-RED-M, lot_code: L2026-04}
       responses:
         '200':
           description: Hold requested.
           content:
             application/json:
               schema: {$ref: '#/components/schemas/LotHoldResponse'}
-              example: {unique_code: SKU-RED-M-L2026-04, status: active}
+              example: {unique_code: L2026-04, status: active, expected_status: holded}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '422':
           description: Validation or business error.
@@ -745,9 +750,10 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/Error'}
               examples:
-                missingParam: {value: {error: "Parameter material_code is required"}}
-                lotNotFound: {value: {error: "No lot found with unique_code SKU-RED-M-L2026-04"}}
-                ambiguous: {value: {error: "Mutiple lots with unique_code SKU-RED-M-L2026-04, this identifier must be unique"}}
+                missingSku: {value: {error: "sku is required"}}
+                missingLotCode: {value: {error: "Parameter lot_code is required"}}
+                lotNotFound: {value: {error: "No lot found with lot_code L2026-04 for sku SKU-RED-M"}}
+                ambiguous: {value: {error: "Multiple lots with lot_code L2026-04 for sku SKU-RED-M, cannot tell which one to change"}}
                 storeNotFound: {value: {error: "Couldn't find Store with 'id'=1234"}}
         '500': {$ref: '#/components/responses/InternalServerError'}
 
@@ -757,10 +763,12 @@ paths:
       operationId: unholdLot
       summary: Release a lot from hold
       description: |
-        Releases a lot previously put on hold so its stock becomes sellable again. The lot is
-        identified by `<material_code>-<lot_code>` (material code is the product SKU). The release is
-        applied asynchronously right after the call.
-        - The `status` in the response is the lot status at the moment of the request, in lowercase, so it still reads `holded` on a successful release request.
+        Releases a lot previously put on hold so its stock becomes sellable again. The lot is found
+        the same way as in `POST /lots/hold/store/{store_id}`. The release is applied asynchronously
+        right after the call.
+        - Only a `HOLDED` lot can be released. Any other lot is left as it is.
+        - `status` in the response is the lot status at the moment of the request, in lowercase, so it still reads `holded` on a successful release request. `expected_status` is the status the release should leave (`active`, or the current status when the lot cannot be released). It is not a confirmation.
+        - The token needs permission to update products; otherwise the call answers `401`.
       security:
         - bearerAuth: []
       parameters:
@@ -775,14 +783,14 @@ paths:
         content:
           application/json:
             schema: {$ref: '#/components/schemas/LotHoldRequest'}
-            example: {material_code: SKU-RED-M, lot_code: L2026-04}
+            example: {sku: SKU-RED-M, lot_code: L2026-04}
       responses:
         '200':
           description: Release requested.
           content:
             application/json:
               schema: {$ref: '#/components/schemas/LotHoldResponse'}
-              example: {unique_code: SKU-RED-M-L2026-04, status: holded}
+              example: {unique_code: L2026-04, status: holded, expected_status: active}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '422':
           description: Validation or business error.
@@ -790,9 +798,10 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/Error'}
               examples:
-                missingParam: {value: {error: "Parameter lot_code is required"}}
-                lotNotFound: {value: {error: "No lot found with unique_code SKU-RED-M-L2026-04"}}
-                ambiguous: {value: {error: "Mutiple lots with unique_code SKU-RED-M-L2026-04, this identifier must be unique"}}
+                missingSku: {value: {error: "sku is required"}}
+                missingLotCode: {value: {error: "Parameter lot_code is required"}}
+                lotNotFound: {value: {error: "No lot found with lot_code L2026-04 for sku SKU-RED-M"}}
+                ambiguous: {value: {error: "Multiple lots with lot_code L2026-04 for sku SKU-RED-M, cannot tell which one to change"}}
                 storeNotFound: {value: {error: "Couldn't find Store with 'id'=1234"}}
         '500': {$ref: '#/components/responses/InternalServerError'}
 
@@ -1914,11 +1923,11 @@ components:
           example: 1234
         sku:
           type: string
-          description: SKU of the product. Required when creating a lot. When sent, the lot's unique code becomes `<sku>-<lot_code>`.
+          description: SKU of the product. Required when creating a lot. When sent, only this product's lots are considered.
           example: SKU-RED-M
         lot_code:
           type: string
-          description: Lot code. Used as the full unique code when `sku` is omitted.
+          description: Lot code, as sent in `POST /replenishments`.
           example: L2026-04
         expiration_date:
           type: string
@@ -1955,15 +1964,19 @@ components:
       type: object
       description: Body of `POST /lots/hold/store/{store_id}` and `POST /lots/unhold/store/{store_id}`.
       properties:
+        sku:
+          type: string
+          description: SKU of the product the lot belongs to. Send this or `material_code`.
+          example: SKU-RED-M
         material_code:
           type: string
-          description: Product SKU (material code). Combined with `lot_code` as `<material_code>-<lot_code>` to find the lot.
+          description: Accepted in place of `sku`. Used when both are sent.
           example: SKU-RED-M
         lot_code:
           type: string
-          description: Lot code.
+          description: Lot code, as sent in `POST /replenishments`.
           example: L2026-04
-      required: [material_code, lot_code]
+      required: [lot_code]
 
     LotHoldResponse:
       type: object
@@ -1972,13 +1985,18 @@ components:
         unique_code:
           type: string
           description: The lot's unique code within the store.
-          example: SKU-RED-M-L2026-04
+          example: L2026-04
         status:
           type: string
           description: Lot status at the moment of the request, in lowercase. The hold or release is applied right after.
           enum: [active, holded, damaged, expired]
           example: active
-      required: [unique_code, status]
+        expected_status:
+          type: string
+          description: Status the hold or release should leave, in lowercase. The current status when the lot cannot make the transition. Not a confirmation.
+          enum: [active, holded, damaged, expired]
+          example: holded
+      required: [unique_code, status, expected_status]
 
     InventoryTransactionsResponse:
       type: object
