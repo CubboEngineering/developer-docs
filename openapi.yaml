@@ -1,5 +1,5 @@
 # Generated from controllers in platform (origin/main). Do not hand-edit endpoint pages in MDX.
-openapi: 3.1.0
+openapi: 3.2.0
 info:
   title: Cubbo Clients API
   version: "1.0"
@@ -39,6 +39,24 @@ tags:
     description: Available shipping methods, coverage and quotes.
   - name: Click and collect
     description: Pickup points and in-store pickup orders.
+  - name: Webhooks
+    description: Events Cubbo sends to your endpoint.
+  - name: Order webhooks
+    parent: Webhooks
+    x-group: Orders
+    description: Order status, fulfillment and carrier tracking events.
+  - name: Inventory webhooks
+    parent: Webhooks
+    x-group: Inventory
+    description: Stock movement events.
+  - name: Replenishment webhooks
+    parent: Webhooks
+    x-group: Replenishments
+    description: Inbound shipment events.
+  - name: Return webhooks
+    parent: Webhooks
+    x-group: Returns
+    description: Return lifecycle events.
 components:
   securitySchemes:
     bearerAuth:
@@ -7791,19 +7809,7 @@ components:
           description: Cubbo return id.
           example: 4410
         status:
-          type: string
-          description: Status of the return.
-          enum:
-            - REQUESTED
-            - PENDING
-            - ORDERED
-            - CANCELLED
-            - RECEIVED
-            - ARRIVED_AT_WAREHOUSE
-            - AWAITING_INSPECTION
-            - REENTERED
-            - UNSUCCESSFUL
-          example: RECEIVED
+          $ref: "#/components/schemas/ReturnStatus"
         notes:
           type:
             - string
@@ -8658,30 +8664,9 @@ components:
           description: Order number of the returned order. `null` for an unidentified return.
           example: ORD-10023
         return_type:
-          type: string
-          description: Type of the return.
-          enum:
-            - SIMPLE_RETURN
-            - EXCHANGE
-            - IMMEDIATE_EXCHANGE
-            - RETURNED_BY_CARRIER
-            - UNIDENTIFIED
-            - TO_BE_DETERMINED
-          example: SIMPLE_RETURN
+          $ref: "#/components/schemas/ReturnType"
         status:
-          type: string
-          description: Status of the return at the moment of the event.
-          enum:
-            - REQUESTED
-            - PENDING
-            - ORDERED
-            - CANCELLED
-            - RECEIVED
-            - ARRIVED_AT_WAREHOUSE
-            - AWAITING_INSPECTION
-            - REENTERED
-            - UNSUCCESSFUL
-          example: RECEIVED
+          $ref: "#/components/schemas/ReturnStatus"
         sequence:
           type: integer
           format: int64
@@ -8813,7 +8798,12 @@ components:
       properties:
         type:
           type: string
-          description: Kind of difference.
+          description: |
+            Kind of difference between what was declared and what the warehouse checked in.
+            - `MISSING`: fewer units of a declared product arrived than were declared.
+            - `EXTRA`: more units of a declared product arrived than were declared.
+            - `UNEXPECTED_PRODUCT`: a product that was not declared arrived (a different item).
+            - `DAMAGED`: units arrived damaged and do not go back to stock.
           enum:
             - MISSING
             - EXTRA
@@ -16580,7 +16570,7 @@ webhooks:
   orderUpdated:
     post:
       tags:
-        - Webhooks
+        - Order webhooks
       summary: Order status changed
       operationId: webhookOrderUpdated
       description: |
@@ -16663,7 +16653,7 @@ webhooks:
   orderFulfilled:
     post:
       tags:
-        - Webhooks
+        - Order webhooks
       summary: Order shipped (fulfilled)
       operationId: webhookOrderFulfilled
       description: |
@@ -16726,7 +16716,7 @@ webhooks:
   shippingUpdated:
     post:
       tags:
-        - Webhooks
+        - Order webhooks
       summary: Carrier tracking status changed
       operationId: webhookShippingUpdated
       description: |
@@ -16838,7 +16828,7 @@ webhooks:
   inventoryMovement:
     post:
       tags:
-        - Webhooks
+        - Inventory webhooks
       summary: Inventory snapshot after a stock movement
       operationId: webhookInventoryMovement
       description: |
@@ -16917,7 +16907,7 @@ webhooks:
   replenishmentCreated:
     post:
       tags:
-        - Webhooks
+        - Replenishment webhooks
       summary: Replenishment announced
       operationId: webhookReplenishmentCreated
       description: |
@@ -16974,7 +16964,7 @@ webhooks:
   replenishmentScheduled:
     post:
       tags:
-        - Webhooks
+        - Replenishment webhooks
       summary: Replenishment appointment booked or canceled
       operationId: webhookReplenishmentScheduled
       description: |
@@ -17025,7 +17015,7 @@ webhooks:
   replenishmentStatus:
     post:
       tags:
-        - Webhooks
+        - Replenishment webhooks
       summary: Replenishment status changed
       operationId: webhookReplenishmentStatus
       description: |
@@ -17094,7 +17084,7 @@ webhooks:
   returnArrived:
     post:
       tags:
-        - Webhooks
+        - Return webhooks
       summary: Return arrived at the warehouse
       operationId: webhookReturnArrived
       description: |
@@ -17104,6 +17094,7 @@ webhooks:
 
         - This feed must be enabled for your integration (opt-in, with its own URL). It does not require
           the order webhook feed.
+        - `status` is always `ARRIVED_AT_WAREHOUSE`.
         - `X-Cubbo-Idempotency-Key` is deterministic (`return:<return id>:<event>:<sequence>:<integration>`):
           a retry carries the same key.
       parameters:
@@ -17139,7 +17130,7 @@ webhooks:
   returnInspected:
     post:
       tags:
-        - Webhooks
+        - Return webhooks
       summary: Return inspected
       operationId: webhookReturnInspected
       description: |
@@ -17155,7 +17146,10 @@ webhooks:
           whole order is used. It is `null` when there is nothing to compare against: unidentified
           returns, returns without a declaration that are not carrier returns, and one box of a
           multi-package carrier return.
-        - `status` is the return's status at the moment of the inspection.
+        - `status` is the return's status at the moment of the inspection: `RECEIVED` for a customer
+          return, an exchange or an unidentified package; `PENDING` for an order returned by the carrier,
+          which waits for your decision (`POST /returns/{return_id}/decision`), except a later box of a
+          multi-package order, which is `RECEIVED`; `UNSUCCESSFUL` when nothing arrived in the parcel.
         - When something differs from the declaration, a `returnDivergence` event follows.
       parameters:
         - $ref: "#/components/parameters/WebhookEventHeader"
@@ -17199,7 +17193,7 @@ webhooks:
   returnDivergence:
     post:
       tags:
-        - Webhooks
+        - Return webhooks
       summary: Return differs from the declaration
       operationId: webhookReturnDivergence
       description: |
@@ -17253,7 +17247,7 @@ webhooks:
   returnRestocked:
     post:
       tags:
-        - Webhooks
+        - Return webhooks
       summary: Return units back in stock
       operationId: webhookReturnRestocked
       description: |
@@ -17266,8 +17260,10 @@ webhooks:
         - Units already stored are sellable before this event; it marks the end of the return.
         - If the warehouse reopens and closes the return reception again, this event is sent again as a
           new event, with a new `sequence` and a new `X-Cubbo-Idempotency-Key`.
-        - The return's `status` does not always read as restocked (a carrier return never becomes
-          `REENTERED`); rely on this event instead.
+        - `status` is the return's status at that moment: `REENTERED` for a customer return, an exchange
+          or an unidentified package. An order returned by the carrier never becomes `REENTERED`: its status
+          reflects your decision so far (`PENDING`, `ORDERED` or `CANCELLED`). Rely on this event, not on
+          the status, to know the units are back in stock.
       parameters:
         - $ref: "#/components/parameters/WebhookEventHeader"
         - $ref: "#/components/parameters/WebhookMessageIdHeader"

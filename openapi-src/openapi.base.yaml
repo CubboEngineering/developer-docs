@@ -1,4 +1,4 @@
-openapi: 3.1.0
+openapi: 3.2.0
 info:
   title: Cubbo Clients API
   version: "1.0"
@@ -38,6 +38,24 @@ tags:
     description: Available shipping methods, coverage and quotes.
   - name: Click and collect
     description: Pickup points and in-store pickup orders.
+  - name: Webhooks
+    description: Events Cubbo sends to your endpoint.
+  - name: Order webhooks
+    parent: Webhooks
+    x-group: Orders
+    description: Order status, fulfillment and carrier tracking events.
+  - name: Inventory webhooks
+    parent: Webhooks
+    x-group: Inventory
+    description: Stock movement events.
+  - name: Replenishment webhooks
+    parent: Webhooks
+    x-group: Replenishments
+    description: Inbound shipment events.
+  - name: Return webhooks
+    parent: Webhooks
+    x-group: Returns
+    description: Return lifecycle events.
 components:
   securitySchemes:
     bearerAuth:
