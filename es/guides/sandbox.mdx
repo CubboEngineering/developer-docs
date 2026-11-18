@@ -1,0 +1,131 @@
+---
+title: "Probar tu integración"
+description: "Completa reabastecimientos, envía órdenes y cambia su rastreo en tu tienda de pruebas, con los webhooks reales."
+---
+
+En producción, el almacén recibe tus reabastecimientos y envía tus órdenes, y la paquetería reporta el rastreo. En
+tu **tienda de pruebas**, los endpoints de sandbox hacen esos pasos por ti, para que pruebes toda tu integración a
+tu ritmo. Cada paso envía los mismos webhooks, con el mismo contenido, que el flujo real.
+
+<Note>
+Los endpoints de sandbox solo funcionan en tiendas de pruebas. Tu asesor de cuenta crea tu tienda de pruebas y la
+marca como cuenta de prueba; consulta [Tienda de pruebas y cuenta de producción](/es#tienda-de-pruebas-y-cuenta-de-producción).
+Las llamadas con credenciales de producción responden `403` con el código `NOT_A_TEST_STORE`.
+</Note>
+
+## Antes de empezar
+
+- Las credenciales de la integración de tu tienda de pruebas. Consulta [Configura tu integración](/es/guides/setup).
+- Tus [webhooks](/es/guides/webhooks) configurados, si quieres recibir los eventos.
+- Un producto en tu tienda de pruebas. Consulta el [inicio rápido](/es/quickstart).
+
+## Prueba el flujo completo
+
+<Steps>
+  <Step title="Crea un reabastecimiento">
+    Anuncia el stock que enviarías al almacén.
+
+    ```bash
+    curl -X POST https://api.cubbo.com/v1/replenishments \
+      -H "Authorization: Bearer <token>" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "store_id": 1234,
+        "expected_arrived_at": "2026-11-02T15:00:00Z",
+        "products": [{ "sku": "SKU-RED-M", "quantity": 100 }]
+      }'
+    ```
+
+    Guarda el `id` de la respuesta.
+  </Step>
+  <Step title="Completa el reabastecimiento">
+    El almacén recibe y acomoda todo lo que declaraste, y el stock queda disponible.
+
+    ```bash
+    curl -X POST https://api.cubbo.com/v1/sandbox/replenishments/55001/complete \
+      -H "Authorization: Bearer <token>"
+    ```
+
+    Recibes `replenishmentStatus` para `PROCESSING`, `IN_PUTAWAY` y `COMPLETED`, y luego `inventoryMovement` para
+    los productos recibidos.
+  </Step>
+  <Step title="Crea una orden">
+    Crea una orden del producto, como en el [inicio rápido](/es/quickstart). Guarda el `id` de la respuesta. Cubbo
+    procesa la orden en unos segundos y la pasa a `pending`; espera ese evento `orderUpdated` o consulta la orden con
+    `GET /orders`.
+  </Step>
+  <Step title="Envía la orden">
+    El almacén surte, empaca y envía la orden con una guía de prueba.
+
+    ```bash
+    curl -X POST https://api.cubbo.com/v1/sandbox/orders/987654/ship \
+      -H "Authorization: Bearer <token>"
+    ```
+
+    Recibes `orderUpdated` para `processing`, `picking` y `packing`, y luego `orderFulfilled`. El número de rastreo
+    empieza con `SANDBOX-`.
+  </Step>
+  <Step title="Mueve el envío">
+    Envía los eventos de paquetería que quieras probar, una llamada por evento.
+
+    ```bash
+    curl -X POST https://api.cubbo.com/v1/sandbox/orders/987654/tracking \
+      -H "Authorization: Bearer <token>" \
+      -H "Content-Type: application/json" \
+      -d '{ "status": "shipment_in_transit" }'
+    ```
+
+    Cada llamada envía `shippingUpdated`. Para probar un intento de entrega fallido, envía
+    `{ "status": "shipment_with_incident", "incident_description": "not_at_home" }`. Termina con
+    `shipment_delivered`.
+  </Step>
+</Steps>
+
+## Qué hace cada endpoint
+
+| Endpoint | Qué simula | Webhooks |
+|---|---|---|
+| `POST /sandbox/replenishments/{replenishment_id}/complete` | El almacén recibe y acomoda cada unidad declarada. | `replenishmentStatus` (3), `inventoryMovement` |
+| `POST /sandbox/orders/{order_id}/ship` | El almacén surte, empaca y envía la orden. | `orderUpdated` (3), `orderFulfilled` |
+| `POST /sandbox/orders/{order_id}/tracking` | La paquetería reporta un evento de rastreo. | `shippingUpdated` |
+
+Estatus de rastreo que puedes enviar: `shipment_collected`, `shipment_in_transit`, `shipment_out_for_delivery`,
+`shipment_with_incident` y `shipment_delivered`. Descripciones de incidencia: `not_at_home`, `missing_references`,
+`refused_payment`, `refused_package`, `client_requested`, `delivery_failed`, `damaged`, `lost` y `stolen`.
+
+## Límites
+
+- Usa en la ruta el `id` de la orden que devuelve Cubbo, no tu número de orden.
+- Los reabastecimientos se reciben completos: sin faltantes, daños ni lotes. Los reabastecimientos de devolución y
+  de preventa no son compatibles.
+- Solo se pueden enviar órdenes creadas por la API. Las órdenes de click and collect, pick-and-ship y retiro de
+  stock no son compatibles.
+- Una orden en `backorder` no se puede enviar. Completa primero un reabastecimiento con sus productos. Las órdenes
+  que ya esperaban toman el stock nuevo con el procesamiento regular de backorders de Cubbo, que puede tardar unos
+  minutos.
+- No se contacta a ninguna paquetería, y las órdenes enviadas por el sandbox dejan `shipping_date` vacío.
+- `shipment_delivered` es final para el sandbox.
+- No se generan cobros, facturas ni notificaciones al cliente final.
+
+## Errores
+
+Los errores del sandbox tienen un objeto `error` con un `message` y un `code` estable:
+
+```json
+{
+  "error": {
+    "message": "This order has no stock assigned yet. Complete a receipt with its products first.",
+    "code": "ORDER_WITHOUT_STOCK"
+  }
+}
+```
+
+| Estatus | Código | Significado |
+|---|---|---|
+| `403` | `NOT_A_TEST_STORE` | La tienda no es una tienda de pruebas. |
+| `403` | `SANDBOX_DISABLED` | El sandbox está apagado temporalmente. Intenta más tarde. |
+| `404` | `NOT_FOUND` | El registro no existe, o tus credenciales no tienen acceso a su tienda. |
+| `409` | `ORDER_WITHOUT_STOCK`, `INVALID_ORDER_STATUS`, `ORDER_NOT_SHIPPED_BY_SANDBOX`, ... | El registro no está en un estado que el paso acepte. |
+| `422` | `SANDBOX_NOT_CONFIGURED` | Cubbo no ha terminado de configurar tu tienda de pruebas. Contacta a tu asesor de cuenta. |
+
+La [referencia de la API](/api-reference/sandbox/complete-a-replenishment) lista todos los códigos de cada endpoint.
