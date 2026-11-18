@@ -195,5 +195,51 @@
   },
   "appearance": {
     "default": "light"
-  }
+  },
+  "redirects": [
+    {
+      "source": "/api-reference/webhooks/order-status-changed",
+      "destination": "/api-reference/order-webhooks/order-status-changed"
+    },
+    {
+      "source": "/api-reference/webhooks/order-shipped-fulfilled",
+      "destination": "/api-reference/order-webhooks/order-shipped-fulfilled"
+    },
+    {
+      "source": "/api-reference/webhooks/carrier-tracking-status-changed",
+      "destination": "/api-reference/order-webhooks/carrier-tracking-status-changed"
+    },
+    {
+      "source": "/api-reference/webhooks/inventory-snapshot-after-a-stock-movement",
+      "destination": "/api-reference/inventory-webhooks/inventory-snapshot-after-a-stock-movement"
+    },
+    {
+      "source": "/api-reference/webhooks/replenishment-announced",
+      "destination": "/api-reference/replenishment-webhooks/replenishment-announced"
+    },
+    {
+      "source": "/api-reference/webhooks/replenishment-appointment-booked-or-canceled",
+      "destination": "/api-reference/replenishment-webhooks/replenishment-appointment-booked-or-canceled"
+    },
+    {
+      "source": "/api-reference/webhooks/replenishment-status-changed",
+      "destination": "/api-reference/replenishment-webhooks/replenishment-status-changed"
+    },
+    {
+      "source": "/api-reference/webhooks/return-arrived-at-the-warehouse",
+      "destination": "/api-reference/return-webhooks/return-arrived-at-the-warehouse"
+    },
+    {
+      "source": "/api-reference/webhooks/return-inspected",
+      "destination": "/api-reference/return-webhooks/return-inspected"
+    },
+    {
+      "source": "/api-reference/webhooks/return-differs-from-the-declaration",
+      "destination": "/api-reference/return-webhooks/return-differs-from-the-declaration"
+    },
+    {
+      "source": "/api-reference/webhooks/return-units-back-in-stock",
+      "destination": "/api-reference/return-webhooks/return-units-back-in-stock"
+    }
+  ]
 }
