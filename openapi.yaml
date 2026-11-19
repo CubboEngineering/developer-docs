@@ -7682,6 +7682,7 @@ components:
         - id
         - status
         - order_number
+        - order_type
         - updated_at
         - store_id
       properties:
@@ -7720,6 +7721,8 @@ components:
           type: string
           description: Your order number, as sent when the order was created.
           example: ORD-0001
+        order_type:
+          $ref: "#/components/schemas/OrderType"
         updated_at:
           type: string
           format: date-time
@@ -7917,6 +7920,7 @@ components:
       required:
         - id
         - order_number
+        - order_type
         - carrier_name
         - status
         - store_id
@@ -7932,6 +7936,8 @@ components:
           type: string
           description: Your order number.
           example: ORD-0001
+        order_type:
+          $ref: "#/components/schemas/OrderType"
         carrier_name:
           type:
             - string
@@ -8128,6 +8134,7 @@ components:
         - status
         - store_id
         - order_number
+        - order_type
         - updated_at
         - tracking_urls
         - is_multi_package
@@ -8181,6 +8188,8 @@ components:
           type: string
           description: Your order number.
           example: ORD-0001
+        order_type:
+          $ref: "#/components/schemas/OrderType"
         updated_at:
           type: string
           format: date-time
@@ -16612,6 +16621,7 @@ webhooks:
                   id: 987654
                   status: picking
                   order_number: ORD-0001
+                  order_type: SALE
                   updated_at: "2026-10-12T15:04:05Z"
                   store_id: 1234
                   products:
@@ -16631,6 +16641,7 @@ webhooks:
                   id: 987655
                   status: pending
                   order_number: ORD-0001-EXCHANGE
+                  order_type: SALE
                   updated_at: "2026-10-12T15:04:05Z"
                   store_id: 1234
                   created_by_return:
@@ -16692,6 +16703,7 @@ webhooks:
             example:
               id: 987654
               order_number: ORD-0001
+              order_type: SALE
               carrier_name: Estafeta
               first_name: Ana
               last_name: Example
@@ -16766,6 +16778,7 @@ webhooks:
                   tracking_number: "1234567890123456789012"
                   zip_code: "06600"
                   order_number: ORD-0001
+                  order_type: SALE
                   updated_at: "2026-10-14T18:32:10Z"
                   estimated_time_arrival: "2026-10-14T23:59:59Z"
                   incident_description: null
@@ -16798,6 +16811,7 @@ webhooks:
                   tracking_number: "1234567890123456789012"
                   zip_code: "06600"
                   order_number: ORD-0001
+                  order_type: SALE
                   updated_at: "2026-10-13T11:05:00Z"
                   estimated_time_arrival: "2026-10-14T23:59:59Z"
                   incident_description: not_at_home
