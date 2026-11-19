@@ -15388,11 +15388,6 @@ paths:
                   value:
                     error: return 98766 has not been received yet
                     code: RETURN_NOT_RECEIVED
-                notExternal:
-                  summary: The store does not use the external exchange decision
-                  value:
-                    error: store of return 98766 does not defer exchange order creation
-                    code: EXCHANGE_ORDER_NOT_EXTERNAL
                 alreadyHasOrder:
                   value:
                     error: return 98766 already has an exchange order
@@ -15598,11 +15593,6 @@ paths:
                   value:
                     error: return 98766 has not been received yet
                     code: RETURN_NOT_RECEIVED
-                notExternal:
-                  summary: The store does not use the external exchange decision
-                  value:
-                    error: store of return 98766 does not defer exchange order creation
-                    code: EXCHANGE_ORDER_NOT_EXTERNAL
                 alreadyHasOrder:
                   value:
                     error: return 98766 already has an exchange order
