@@ -22,7 +22,9 @@ paths:
           `false` to resolve without booking a return shipping label (the RMA is still generated).
         - For `EXCHANGE`, `exchange_products` lists the replacement items (resolved against your
           store catalog, not the order) and their stock is reserved right away, to ship once the
-          return arrives.
+          return arrives. On stores where your system decides each exchange, the replacement waits
+          for `POST /returns/{return_id}/create-exchange-order` or
+          `POST /returns/{return_id}/reject-exchange` instead.
         - Return-level blockers (order not shipped, return already exists) are reported before
           item-level errors.
         - If the return is created but the immediate resolution fails (for example the carrier
@@ -315,7 +317,9 @@ paths:
           available inventory and the return moves to `CANCELLED`. Answers 200.
 
         Only a `PENDING` return of type `RETURNED_BY_CARRIER` can be decided; anything else answers
-        422 `RETURN_NOT_DECIDABLE`. Your API credentials need the permission to resolve returns.
+        422 `RETURN_NOT_DECIDABLE`. To decide an `EXCHANGE` return, use
+        `POST /returns/{return_id}/create-exchange-order` or `POST /returns/{return_id}/reject-exchange`.
+        Your API credentials need the permission to resolve returns.
       security:
         - bearerAuth: []
       parameters:
@@ -396,6 +400,172 @@ paths:
                 notCancelable:
                   summary: cancel_forward raced with a concurrent cancellation
                   value: {error: "return 98765 is not pending and cannot be cancelled", code: RETURN_NOT_CANCELABLE}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /returns/{return_id}/create-exchange-order:
+    post:
+      tags: [Returns]
+      operationId: createExchangeOrder
+      summary: Accept an exchange and create the replacement order
+      description: |
+        For stores where your system decides each exchange, Cubbo does not ship the replacement when
+        an `EXCHANGE` return is received: it keeps the replacement items (`exchange_products`)
+        reserved and waits for your decision. Call this endpoint to accept the exchange. Cubbo creates
+        the replacement order from the original one (same customer and shipping data, the
+        `exchange_products` as items), assigns the reserved units to it and starts processing it.
+        To refund instead, call `POST /returns/{return_id}/reject-exchange`. Ask Cubbo support to
+        enable this decision flow on your store.
+
+        - The return must be of type `EXCHANGE` and already received: status `RECEIVED` or
+          `REENTERED`. Earlier statuses answer 422 `RETURN_NOT_RECEIVED`.
+        - Each return gets one replacement. A second call answers 422 `RETURN_ALREADY_HAS_ORDER`.
+        - The replacement order number is the original order number with an `_R` suffix.
+        - The replacement is attributed to your store's API integration, so it sends the same order
+          webhooks as an order you created through the API.
+        - The request body is empty. Your API credentials need the permission to resolve returns.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: return_id
+          in: path
+          required: true
+          description: Numeric id of the `EXCHANGE` return.
+          schema:
+            type: integer
+          example: 98766
+      responses:
+        '201':
+          description: The replacement order, with its `order_lines` and `shipping_method`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+              example:
+                id: 987700
+                store_id: 1234
+                order_number: "ORD-0001_R"
+                status: "initial"
+                channel_created_at: "2026-10-12T15:04:05.000Z"
+                order_date: "2026-10-12T15:04:05.000Z"
+                shipping_email: "buyer@example.com"
+                is_paid: true
+                is_cod: false
+                currency: "MXN"
+                shipping_method:
+                  id: 321
+                  carrier_name: "DHL"
+                  shipping_name: "DHL Express"
+                  is_cod: false
+                order_lines:
+                  - id: 554433
+                    name: "Red T-shirt L"
+                    sku: "SKU-RED-L"
+                    quantity: 1
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404':
+          description: No return with that id in your stores.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "no return found with return_id 98766"
+        '409':
+          description: Another decision on the same exchange is still being processed, or the return is being received at the warehouse right now. Retry after a moment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnError'
+              example:
+                error: "an exchange decision for this return is already in progress"
+                code: EXCHANGE_DECISION_IN_FLIGHT
+        '422':
+          description: The exchange cannot be accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnError'
+              examples:
+                notExchange:
+                  value: {error: "return 98766 is not an exchange", code: RETURN_NOT_EXCHANGE}
+                notReceived:
+                  value: {error: "return 98766 has not been received yet", code: RETURN_NOT_RECEIVED}
+                alreadyHasOrder:
+                  value: {error: "return 98766 already has an exchange order", code: RETURN_ALREADY_HAS_ORDER}
+                noExchangeProducts:
+                  value: {error: "return 98766 has no exchange products", code: NO_EXCHANGE_PRODUCTS}
+                noIntegration:
+                  value: {error: "Channel integration for openapi not found, contact support.", code: CHANNEL_INTEGRATION_NOT_FOUND}
+        '500': {$ref: '#/components/responses/InternalServerError'}
+
+  /returns/{return_id}/reject-exchange:
+    post:
+      tags: [Returns]
+      operationId: rejectExchange
+      summary: Reject an exchange and keep the return as a refund
+      description: |
+        For stores where your system decides each exchange, call this endpoint to reject an `EXCHANGE`
+        return that is waiting for your decision. No replacement is shipped: the reserved replacement
+        items are released back to available inventory and the return becomes a `SIMPLE_RETURN`, with
+        `resolved_at` set. The return is not cancelled; the goods that came back stay received. To ship
+        the replacement instead, call `POST /returns/{return_id}/create-exchange-order`.
+
+        - The return must be of type `EXCHANGE`, already received (status `RECEIVED` or `REENTERED`),
+          and without a replacement order.
+        - A second call answers 422 `RETURN_NOT_EXCHANGE`, since the return is no longer an exchange.
+        - The request body is empty. Your API credentials need the permission to resolve returns.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: return_id
+          in: path
+          required: true
+          description: Numeric id of the `EXCHANGE` return.
+          schema:
+            type: integer
+          example: 98766
+      responses:
+        '200':
+          description: The exchange was rejected; the return is now a simple return.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnExchangeRejected'
+              example:
+                return_id: 98766
+                return_type: SIMPLE_RETURN
+                status: RECEIVED
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404':
+          description: No return with that id in your stores.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "no return found with return_id 98766"
+        '409':
+          description: Another decision on the same exchange is still being processed, or the return is being received at the warehouse right now. Retry after a moment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnError'
+              example:
+                error: "an exchange decision for this return is already in progress"
+                code: EXCHANGE_DECISION_IN_FLIGHT
+        '422':
+          description: The exchange cannot be rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReturnError'
+              examples:
+                notExchange:
+                  value: {error: "return 98766 is not an exchange", code: RETURN_NOT_EXCHANGE}
+                notReceived:
+                  value: {error: "return 98766 has not been received yet", code: RETURN_NOT_RECEIVED}
+                alreadyHasOrder:
+                  value: {error: "return 98766 already has an exchange order", code: RETURN_ALREADY_HAS_ORDER}
         '500': {$ref: '#/components/responses/InternalServerError'}
 
   /returns/awaiting-invoice:
@@ -713,7 +883,7 @@ components:
         What kind of return this is.
         - `TO_BE_DETERMINED`: requested by the customer or by you, not yet reviewed; the outcome (simple return, exchange, rejection) is decided later.
         - `SIMPLE_RETURN`: the customer sends the goods back; no replacement is shipped.
-        - `EXCHANGE`: the customer sends the goods back and replacement items (`exchange_products`) are reserved to ship once the return arrives.
+        - `EXCHANGE`: the customer sends the goods back and replacement items (`exchange_products`) are reserved to ship once the return arrives, or, on stores where your system decides each exchange, once you accept it with `POST /returns/{return_id}/create-exchange-order`.
         - `IMMEDIATE_EXCHANGE`: replacement items ship right away, before the return arrives (created from the Cubbo app, not through this API).
         - `RETURNED_BY_CARRIER`: the carrier could not deliver the order and brought it back; decide it with `POST /returns/{return_id}/decision`.
         - `UNIDENTIFIED`: a package arrived at the warehouse that could not be matched to an order (created by warehouse staff).
@@ -1100,6 +1270,19 @@ components:
         return_status:
           $ref: '#/components/schemas/ReturnStatus'
 
+    ReturnExchangeRejected:
+      type: object
+      required: [return_id, return_type, status]
+      properties:
+        return_id:
+          type: integer
+          description: Id of the return.
+          example: 98766
+        return_type:
+          $ref: '#/components/schemas/ReturnType'
+        status:
+          $ref: '#/components/schemas/ReturnStatus'
+
     ReturnAwaitingInvoice:
       type: object
       description: A return that is waiting for its inbound NF-e.
@@ -1260,7 +1443,7 @@ components:
 
     ReturnError:
       type: object
-      description: Error body of the create, cancel and decision endpoints, with a machine-readable `code`.
+      description: Error body of the create, cancel, decision and exchange decision endpoints, with a machine-readable `code`.
       required: [error]
       properties:
         error:
