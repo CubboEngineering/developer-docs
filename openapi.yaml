@@ -6171,9 +6171,13 @@ components:
           description: When the return was created.
           example: "2026-10-12T15:04:05.123Z"
         resolution:
-          $ref: "#/components/schemas/ReturnResolution"
+          anyOf:
+            - $ref: "#/components/schemas/ReturnResolution"
+            - type: "null"
         resolution_detail:
-          $ref: "#/components/schemas/ReturnResolutionDetail"
+          anyOf:
+            - $ref: "#/components/schemas/ReturnResolutionDetail"
+            - type: "null"
         inspection:
           $ref: "#/components/schemas/ReturnInspection"
         created_order:
@@ -6184,9 +6188,7 @@ components:
           items:
             $ref: "#/components/schemas/ReturnInvoice"
     ReturnResolution:
-      type:
-        - string
-        - "null"
+      type: string
       description: |
         Where an `EXCHANGE` return stands or how it ended. Null for every other return type.
 
@@ -6199,12 +6201,9 @@ components:
         - replacement
         - refund
         - cancelled
-        - null
       example: pending
     ReturnResolutionDetail:
-      type:
-        - string
-        - "null"
+      type: string
       description: |
         What a `pending` exchange waits for. Null when `resolution` is not `pending`.
 
@@ -6215,7 +6214,6 @@ components:
         - awaiting_receipt
         - awaiting_inspection_result
         - awaiting_decision
-        - null
       example: awaiting_decision
     ReturnInspectionRequest:
       type: object
@@ -6387,9 +6385,13 @@ components:
         return_type:
           $ref: "#/components/schemas/ReturnType"
         resolution:
-          $ref: "#/components/schemas/ReturnResolution"
+          anyOf:
+            - $ref: "#/components/schemas/ReturnResolution"
+            - type: "null"
         resolution_detail:
-          $ref: "#/components/schemas/ReturnResolutionDetail"
+          anyOf:
+            - $ref: "#/components/schemas/ReturnResolutionDetail"
+            - type: "null"
         inspection:
           $ref: "#/components/schemas/ReturnInspection"
         created_order:

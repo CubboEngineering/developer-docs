@@ -1262,9 +1262,13 @@ components:
           description: When the return was created.
           example: "2026-10-12T15:04:05.123Z"
         resolution:
-          $ref: '#/components/schemas/ReturnResolution'
+          anyOf:
+            - $ref: '#/components/schemas/ReturnResolution'
+            - type: 'null'
         resolution_detail:
-          $ref: '#/components/schemas/ReturnResolutionDetail'
+          anyOf:
+            - $ref: '#/components/schemas/ReturnResolutionDetail'
+            - type: 'null'
         inspection:
           $ref: '#/components/schemas/ReturnInspection'
         created_order:
@@ -1276,7 +1280,7 @@ components:
             $ref: '#/components/schemas/ReturnInvoice'
 
     ReturnResolution:
-      type: [string, 'null']
+      type: string
       description: |
         Where an `EXCHANGE` return stands or how it ended. Null for every other return type.
 
@@ -1284,18 +1288,18 @@ components:
         - `replacement`: the replacement order exists (`created_order`).
         - `refund`: you rejected the exchange with `POST /returns/{return_id}/reject-exchange`.
         - `cancelled`: the exchange was cancelled, or nothing came back.
-      enum: [pending, replacement, refund, cancelled, null]
+      enum: [pending, replacement, refund, cancelled]
       example: pending
 
     ReturnResolutionDetail:
-      type: [string, 'null']
+      type: string
       description: |
         What a `pending` exchange waits for. Null when `resolution` is not `pending`.
 
         - `awaiting_receipt`: the goods have not been checked in at the warehouse yet.
         - `awaiting_inspection_result`: received; your inspection result is not recorded yet.
         - `awaiting_decision`: your inspection is recorded; accept or reject the exchange.
-      enum: [awaiting_receipt, awaiting_inspection_result, awaiting_decision, null]
+      enum: [awaiting_receipt, awaiting_inspection_result, awaiting_decision]
       example: awaiting_decision
 
     ReturnInspectionRequest:
@@ -1413,9 +1417,13 @@ components:
         return_type:
           $ref: '#/components/schemas/ReturnType'
         resolution:
-          $ref: '#/components/schemas/ReturnResolution'
+          anyOf:
+            - $ref: '#/components/schemas/ReturnResolution'
+            - type: 'null'
         resolution_detail:
-          $ref: '#/components/schemas/ReturnResolutionDetail'
+          anyOf:
+            - $ref: '#/components/schemas/ReturnResolutionDetail'
+            - type: 'null'
         inspection:
           $ref: '#/components/schemas/ReturnInspection'
         created_order:
