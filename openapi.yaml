@@ -7472,6 +7472,245 @@ components:
             - cart_value
             - item_count
           example: cart_value
+    ShippingQuoteByItemsRequest:
+      type: object
+      required:
+        - store_id
+        - destination
+      description: Send `items` or `package`, not both.
+      properties:
+        store_id:
+          type: integer
+          description: Id of the store. Your credential must have access to it.
+          example: 1234
+        destination:
+          type: object
+          required:
+            - zip_code
+          properties:
+            zip_code:
+              type: string
+              description: Destination zip code
+              example: 01310-100
+            country:
+              type: string
+              enum:
+                - BR
+                - MX
+              description: >-
+                Defaults to the country of the store's warehouse. Required when the store has warehouses in
+                more than one country.
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          description: Products in the cart. Each needs `sku` or `product_id`.
+          items:
+            type: object
+            required:
+              - quantity
+            properties:
+              sku:
+                type: string
+                example: SKU-RED-M
+              product_id:
+                type: integer
+                description: Cubbo product id
+              quantity:
+                type: integer
+                minimum: 1
+                maximum: 10000
+                example: 3
+              weight_kg:
+                type: number
+                description: Overrides the registered weight of one unit, for this quote only
+              length_cm:
+                type: number
+                description: Overrides the registered length of one unit, for this quote only
+              width_cm:
+                type: number
+              height_cm:
+                type: number
+        package:
+          type: object
+          description: A package you measured yourself. Quoted as is, like `GET /shipping-methods/quote`.
+          required:
+            - weight_kg
+            - length_cm
+            - width_cm
+            - height_cm
+          properties:
+            weight_kg:
+              type: number
+            length_cm:
+              type: number
+            width_cm:
+              type: number
+            height_cm:
+              type: number
+        shipping_line_codes:
+          type: array
+          description: >-
+            Shipping configurations to quote, with the same codes `POST /brazil/orders` accepts as
+            `shipping_line_code`. Defaults to every configuration of the store.
+          items:
+            type: string
+          example:
+            - Economy
+            - Premium
+    ShippingQuoteByItemsResponse:
+      type: object
+      required:
+        - store_id
+        - warehouse_id
+        - currency
+        - quoted_at
+        - packaging
+        - options
+        - unavailable
+      properties:
+        store_id:
+          type: integer
+        warehouse_id:
+          type: integer
+          description: Warehouse that will fulfill the order (the origin)
+        currency:
+          type: string
+          enum:
+            - BRL
+            - MXN
+        quoted_at:
+          type: string
+          format: date-time
+        packaging:
+          $ref: "#/components/schemas/ShippingQuotePackaging"
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShippingQuoteOption"
+        unavailable:
+          type: array
+          description: Requested shipping configurations with no option for this destination and package
+          items:
+            type: object
+            properties:
+              shipping_line_code:
+                type: string
+              reason:
+                type: string
+                enum:
+                  - no_option
+              causes:
+                type: array
+                description: >-
+                  Why no method of the configuration could take the order, for example `no_coverage` (the zip
+                  code is not served), `missing_shipping_cost` (no rate for that weight) or
+                  `price_unavailable` (Cubbo cannot price the label for this store)
+                items:
+                  type: string
+    ShippingQuotePackaging:
+      type: object
+      description: The box or boxes the quote assumes, and the weight it was priced at
+      properties:
+        source:
+          type: string
+          enum:
+            - store_rule
+            - volume_estimate
+            - request
+          description: >-
+            `store_rule`: the packaging rule agreed for the store. `volume_estimate`: estimated from the
+            products' dimensions. `request`: the `package` you sent.
+        packages:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type:
+                  - string
+                  - "null"
+              length_cm:
+                type: number
+              width_cm:
+                type: number
+              height_cm:
+                type: number
+              volumetric_weight_kg:
+                type: number
+        physical_weight_kg:
+          type:
+            - number
+            - "null"
+          description: Sum of the products' weight. Null above 30 kg or with more than one box, where it is not billed.
+        billable_weight_kg:
+          type: number
+          description: Weight the price was computed for, summed over the boxes
+    ShippingQuoteOption:
+      type: object
+      properties:
+        shipping_method_id:
+          type: integer
+          description: Send as `shipping_method_id` when creating the order to ship with this carrier
+        shipping_line_code:
+          type: string
+          description: >-
+            Shipping configuration of this option; the code `POST /brazil/orders` accepts as
+            `shipping_line_code`
+        carrier_name:
+          type: string
+        service_level:
+          type: string
+          enum:
+            - SameDay
+            - NextDay
+            - Ground
+            - Pickup
+            - International
+        price:
+          type: number
+          description: What Cubbo bills the store for the shipping labels, without insurance or pick and pack
+        handling:
+          type: object
+          properties:
+            estimated_dispatch_at:
+              type:
+                - string
+                - "null"
+              format: date-time
+              description: When Cubbo expects to hand the order to the carrier if it is created now
+        transit:
+          type: object
+          properties:
+            sla_hours:
+              type:
+                - integer
+                - "null"
+              description: >-
+                Contractual transit time of the carrier for the zip code. Reference only; use `days` to show a
+                delivery time.
+            days:
+              type:
+                - object
+                - "null"
+              description: Calendar days from dispatch to each end of the delivery window
+              properties:
+                min:
+                  type: integer
+                max:
+                  type: integer
+        estimated_delivery:
+          type:
+            - object
+            - "null"
+          description: Delivery window, dispatch plus transit, in the warehouse's time zone
+          properties:
+            from:
+              type: string
+              format: date-time
+            to:
+              type: string
+              format: date-time
     PickupPoint:
       type: object
       description: A pickup point eligible for click and collect
@@ -16283,6 +16522,180 @@ paths:
                 noCoverage:
                   value:
                     error: No shipping costs found due to lack of coverage.
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    post:
+      tags:
+        - Shipping methods
+      operationId: quoteShippingByItems
+      summary: Quote shipping options for a cart of products
+      description: >
+        Returns the same shipping options as `GET /shipping-methods/quote`, but you send the products and
+
+        quantities instead of a package. Cubbo resolves the weight of each product, decides the box or boxes
+        the
+
+        order is expected to ship in, and quotes every shipping configuration of the store.
+
+
+        - Kits are counted as their components. Components that are not packed (inserts) do not count.
+
+        - The box comes from the packaging rule Cubbo agreed with the warehouse for your store. Without one,
+          Cubbo estimates the smallest box that holds the products, using their registered dimensions.
+          `packaging.source` tells you which one was used.
+        - The quoted weight follows the label rules: the greater of the products' weight and the box's
+          volumetric weight. Above 30 kg, or with more than one box, only the volumetric weight counts.
+        - With more than one box, every box is priced as its own label and `price` is the sum. Only methods
+          that can carry every box are offered.
+        - `price` is what Cubbo bills the store for the shipping labels. It does not include insurance or
+          pick and pack. The final charge is calculated when the order is packed, with the box actually used,
+          so it can differ from the quote.
+        - Send `package` instead of `items` to quote a package you measured yourself, like the `GET`.
+
+        - Dropshipped products and inserts (products that are not packed) do not count toward the box.
+
+        - Limits: 100 item lines, 10,000 units (after kits are expanded) and 50 boxes per quote.
+
+        - Only national quotes: the destination must be in the country of the store's warehouse. A store with
+          more than one warehouse in that country cannot be quoted yet.
+        - Options Cubbo cannot price are not offered; their configuration is listed in `unavailable` with the
+          cause `price_unavailable`.
+        - Quotes have their own rate limit per API client, separate from the other `/v1` endpoints, and the
+          same cart is answered from a cache for up to a minute.
+        - A store that packs in bags or envelopes needs a packaging rule set up by Cubbo; until then send
+          `package`.
+
+        To ship with the option the shopper chose, create the order with that option's `shipping_method_id`
+
+        as `shipping_method_id` in `POST /brazil/orders`. Sending its `shipping_line_code` instead lets Cubbo
+
+        pick the carrier of that configuration when the order is created, on the order's own weight, so the
+
+        carrier and price can differ from the quoted option.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShippingQuoteByItemsRequest"
+            examples:
+              bySku:
+                summary: Products by SKU
+                value:
+                  store_id: 1234
+                  destination:
+                    zip_code: 01310-100
+                    country: BR
+                  items:
+                    - sku: SKU-RED-M
+                      quantity: 3
+                  shipping_line_codes:
+                    - Economy
+                    - Premium
+      responses:
+        "200":
+          description: Shipping options, grouped by shipping configuration in the configuration's priority order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShippingQuoteByItemsResponse"
+              example:
+                store_id: 1234
+                warehouse_id: 10
+                currency: BRL
+                quoted_at: "2026-11-19T17:00:00Z"
+                packaging:
+                  source: store_rule
+                  packages:
+                    - name: BOX-S
+                      length_cm: 16
+                      width_cm: 12
+                      height_cm: 7
+                      volumetric_weight_kg: 0.223
+                  physical_weight_kg: 0.9
+                  billable_weight_kg: 0.9
+                options:
+                  - shipping_method_id: 35
+                    shipping_line_code: Economy
+                    carrier_name: LOGGI
+                    service_level: Ground
+                    price: 7.59
+                    handling:
+                      estimated_dispatch_at: "2026-11-20T23:59:59-03:00"
+                    transit:
+                      sla_hours: 24
+                      days:
+                        min: 1
+                        max: 3
+                    estimated_delivery:
+                      from: "2026-11-21T00:00:00-03:00"
+                      to: "2026-11-23T23:59:59-03:00"
+                unavailable:
+                  - shipping_line_code: Premium
+                    reason: no_option
+                    causes:
+                      - no_coverage
+        "401":
+          description: Missing or invalid token, or no access to the store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnauthorizedError"
+        "422":
+          description: Validation or business error. `code` says which.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                productNotFound:
+                  value:
+                    error: product SKU-RED-M not found in store 1234
+                    code: PRODUCT_NOT_FOUND
+                productWithoutWeight:
+                  value:
+                    error: product 987 has no weight; send weight_kg for it
+                    code: PRODUCT_WITHOUT_WEIGHT
+                packagingUnavailable:
+                  value:
+                    error: >-
+                      no packaging rule for this store and the items' dimensions cannot be used to estimate a
+                      box; send `package` instead
+                    code: PACKAGING_UNAVAILABLE
+                tooManyPackages:
+                  value:
+                    error: the cart needs more than 50 boxes
+                    code: TOO_MANY_PACKAGES
+                unknownShippingLine:
+                  value:
+                    error: no shipping configuration found with code 'Express'
+                    code: NO_SHIPPING_CONFIGURATION
+                zipNotFound:
+                  value:
+                    error: destination not found for zip code 0131
+                    code: INVALID_ZIP_CODE
+                severalWarehouses:
+                  value:
+                    error: store 1234 has several warehouses in BR
+                    code: MULTIPLE_WAREHOUSES_IN_COUNTRY
+                packagingRuleRequired:
+                  value:
+                    error: the store packs in bags or envelopes and has no packaging rule; send `package` instead
+                    code: PACKAGING_RULE_REQUIRED
+                countryNotServed:
+                  value:
+                    error: store 1234 has no warehouse in MX
+                    code: UNSUPPORTED_COUNTRY
+                storeNotFound:
+                  value:
+                    error: store_id 1234 not found
+                    code: STORE_NOT_FOUND
+                invalidParameter:
+                  value:
+                    error: send either items or package
+                    code: INVALID_PARAMETER
         "500":
           $ref: "#/components/responses/InternalServerError"
   /store:
