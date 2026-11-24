@@ -1025,11 +1025,19 @@ paths:
         - Send `package` instead of `items` to quote a package you measured yourself, like the `GET`.
         - Dropshipped products and inserts (products that are not packed) do not count toward the box.
         - Limits: 100 item lines, 10,000 units (after kits are expanded) and 50 boxes per quote.
-        - Only national quotes: the destination must be in the country of the store's warehouse.
+        - Only national quotes: the destination must be in the country of the store's warehouse. A store with
+          more than one warehouse in that country cannot be quoted yet.
+        - Options Cubbo cannot price are not offered; their configuration is listed in `unavailable` with the
+          cause `price_unavailable`.
+        - Quotes have their own rate limit per API client, separate from the other `/v1` endpoints, and the
+          same cart is answered from a cache for up to a minute.
+        - A store that packs in bags or envelopes needs a packaging rule set up by Cubbo; until then send
+          `package`.
 
-        To create the order with the option you chose, send its `shipping_method_id` as `shipping_method_id`
-        in `POST /brazil/orders` (that carrier is used), or its `shipping_line_code` as `shipping_line_code`
-        (Cubbo picks the carrier of that configuration when the order is created).
+        To ship with the option the shopper chose, create the order with that option's `shipping_method_id`
+        as `shipping_method_id` in `POST /brazil/orders`. Sending its `shipping_line_code` instead lets Cubbo
+        pick the carrier of that configuration when the order is created, on the order's own weight, so the
+        carrier and price can differ from the quoted option.
       security:
         - bearerAuth: []
       requestBody:
@@ -1132,6 +1140,14 @@ paths:
                   value:
                     error: destination not found for zip code 0131
                     code: INVALID_ZIP_CODE
+                severalWarehouses:
+                  value:
+                    error: store 1234 has several warehouses in BR
+                    code: MULTIPLE_WAREHOUSES_IN_COUNTRY
+                packagingRuleRequired:
+                  value:
+                    error: the store packs in bags or envelopes and has no packaging rule; send `package` instead
+                    code: PACKAGING_RULE_REQUIRED
                 countryNotServed:
                   value:
                     error: store 1234 has no warehouse in MX
@@ -2583,7 +2599,7 @@ components:
                 enum: [no_option]
               causes:
                 type: array
-                description: Why no method of the configuration could take the order, for example `no_coverage` (the zip code is not served) or `missing_shipping_cost` (no rate for that weight)
+                description: Why no method of the configuration could take the order, for example `no_coverage` (the zip code is not served), `missing_shipping_cost` (no rate for that weight) or `price_unavailable` (Cubbo cannot price the label for this store)
                 items:
                   type: string
     ShippingQuotePackaging:
@@ -2632,7 +2648,7 @@ components:
           type: string
           enum: [SameDay, NextDay, Ground, Pickup, International]
         price:
-          type: [number, "null"]
+          type: number
           description: What Cubbo bills the store for the shipping labels, without insurance or pick and pack
         handling:
           type: object
