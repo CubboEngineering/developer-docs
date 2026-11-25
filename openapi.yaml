@@ -7093,7 +7093,9 @@ components:
           example: "1000"
         complement:
           type: string
-          description: Address complement
+          description: >-
+            Address complement. Registered on the fiscal account only; the store has no complement field, so
+            it is not listed in `mirrored_fields`.
           example: Sala 1
         neighborhood:
           type: string
@@ -7200,7 +7202,10 @@ components:
               example: SIMPLES_NACIONAL
             mirrored_fields:
               type: array
-              description: Store fields filled from this request (they were blank before)
+              description: >-
+                Store fields filled from this request (they were blank before). Only fields the store has are
+                listed: `trade_name`, `email` and `address.complement` stay on the fiscal account and never
+                appear here.
               items:
                 type: string
               example:
@@ -16915,6 +16920,14 @@ paths:
         - The company data is also copied onto the store's own fiscal fields (the ones
           `PATCH /store` edits), but only where they are still blank. `mirrored_fields` lists
           what was written; `skipped_fields` lists what already had a value and was left alone.
+        - `trade_name`, `email` and `address.complement` are registered on the fiscal account
+          only. The store has no field for them, so they never appear in `mirrored_fields` or
+          `skipped_fields`. There is no `tax_complement` field.
+        - This endpoint does not take a phone number. The store's phone is the store field
+          `tax_state_phone`: send it in `POST /stores` when you create the store, or later with
+          `PATCH /store`. If you leave it out of `POST /stores`, the new store copies the source
+          store's phone. It is used on NF-e where the store is the recipient and as the sender
+          phone on shipping labels.
         - `cnpj` and `tax_regime` are identity fields: if the store already holds a different
           value for either (from an earlier call or from `PATCH /store`), the request is rejected
           instead of overwriting it. Resubmitting the same value is not a conflict. For this
