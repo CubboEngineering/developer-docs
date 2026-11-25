@@ -2494,6 +2494,17 @@ components:
             Removal types only. Base64-encoded XML of the authorized NF-e you issued yourself. Accepted for
             any Brazil removal order.
           example: PG5mZT48L25mZT4=
+        removal_destination:
+          type: string
+          enum:
+            - RETURN_TO_BRAND
+            - DISPOSAL
+          description: >-
+            Where the goods of a `REMOVE_EXPIRED_STOCK` order go. Required for that type; it decides the NF-e:
+            `RETURN_TO_BRAND` is a retorno de remessa, `DISPOSAL` a baixa de estoque por perda your store
+            issues to itself. Refused on the other removal types and ignored on `SALE`/`DONATION`. It cannot
+            be changed after the order is created: cancel the order and create it again.
+          example: DISPOSAL
     BrazilOrderShippingAddress:
       type: object
       description: Recipient and delivery address (required for `SALE`/`DONATION`).
@@ -3857,6 +3868,18 @@ components:
             Whether the order is a B2B order. In `GET /orders` only present for stores that handle both B2B
             and D2C.
           example: false
+        removal_destination:
+          type:
+            - string
+            - "null"
+          enum:
+            - RETURN_TO_BRAND
+            - DISPOSAL
+            - null
+          description: >-
+            Where the goods of a `REMOVE_EXPIRED_STOCK` order go. `null` on every other order and on expired
+            removals created before the field existed.
+          example: null
         is_first_time_buyer:
           type: boolean
           description: Whether this is the buyer's first order in the store.
@@ -9394,6 +9417,11 @@ paths:
           `shipping_line_code` are optional and ignored. `price_per_item` becomes optional (falls back
           to the product's registered price), `quantity` must be at least 1, and you may hand in your
           own NF-e with `invoice_xml` or `client_invoice`.
+        - `REMOVE_EXPIRED_STOCK` must say where the expired goods go in `removal_destination`, which
+          decides the NF-e Cubbo issues: `RETURN_TO_BRAND` (you collect them) is a retorno de remessa,
+          `DISPOSAL` (they are destroyed) is a baixa de estoque por perda your store issues to itself.
+          Without it the request answers 422. It is refused on the other removal types, ignored on
+          `SALE`/`DONATION`, and cannot be changed after the order is created.
         - `REMOVE_LOST_STOCK` is applied synchronously and all-or-nothing: units already recorded
           as lost are written off and the order comes back already `shipped`. It is available only
           to stores that have opted out of Cubbo issuing their removal NF-es (ask Cubbo support).
@@ -9509,6 +9537,16 @@ paths:
                     key: "00000000000000000000000000000000000000000000"
                     serie: "1"
                     number: "987"
+              expiredDisposal:
+                summary: Expired stock sent to disposal
+                value:
+                  store_id: 1234
+                  order_number: REM-EXP-0001
+                  order_type: REMOVE_EXPIRED_STOCK
+                  removal_destination: DISPOSAL
+                  products:
+                    - sku: SKU-RED-M
+                      quantity: 3
       responses:
         "200":
           description: >-
@@ -9715,6 +9753,23 @@ paths:
                     error: >-
                       Orders::LostStockRemovalService -> insufficient LOST stock for product 4321 on order
                       987657 (found 1 of 2)
+                removalDestinationRequired:
+                  summary: REMOVE_EXPIRED_STOCK without removal_destination
+                  value:
+                    error: >-
+                      removal_destination is required for a REMOVE_EXPIRED_STOCK removal in Brazil: one of
+                      RETURN_TO_BRAND, DISPOSAL
+                removalDestinationInvalid:
+                  summary: removal_destination outside the allowed values
+                  value:
+                    error: Parameter removal_destination must be within ["RETURN_TO_BRAND", "DISPOSAL"]
+                removalDestinationNotApplicable:
+                  summary: removal_destination on a removal type that takes none
+                  value:
+                    errors:
+                      - field: removal_destination
+                        code: only applies to REMOVE_EXPIRED_STOCK orders
+                        additional_info: {}
                 clientInvoiceNotAllowed:
                   summary: client_invoice sent but manual NF-e entry is not enabled for the store
                   value:
@@ -13317,7 +13372,8 @@ paths:
           `requires_pickup_on_delivery`, `currency`, `total_price`, `shipping`, `billing`,
           `estimated_time_arrival`, `delivered_at`, `updated_at`, `is_click_and_collect`,
           `click_and_collect_metadata`, `channel_shipping_line_code`, `warehouse_timezone`, `shipping_method`,
-          `is_multi_package`, `delivery_tracking`, `is_first_time_buyer`, `is_subscription_renewal`.
+          `is_multi_package`, `delivery_tracking`, `is_first_time_buyer`, `is_subscription_renewal`,
+          `removal_destination`.
         - `shipping_method` is the only association available; when requested it is returned with every
           `OrderShippingMethod` field.
         - Filters: `status` (exact values, no `processing` expansion), `order_type`, `shipping_email`

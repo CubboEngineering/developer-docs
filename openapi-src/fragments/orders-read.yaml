@@ -308,7 +308,8 @@ paths:
           `requires_pickup_on_delivery`, `currency`, `total_price`, `shipping`, `billing`,
           `estimated_time_arrival`, `delivered_at`, `updated_at`, `is_click_and_collect`,
           `click_and_collect_metadata`, `channel_shipping_line_code`, `warehouse_timezone`, `shipping_method`,
-          `is_multi_package`, `delivery_tracking`, `is_first_time_buyer`, `is_subscription_renewal`.
+          `is_multi_package`, `delivery_tracking`, `is_first_time_buyer`, `is_subscription_renewal`,
+          `removal_destination`.
         - `shipping_method` is the only association available; when requested it is returned with every
           `OrderShippingMethod` field.
         - Filters: `status` (exact values, no `processing` expansion), `order_type`, `shipping_email`
@@ -1403,6 +1404,7 @@ components:
         is_pick_and_ship: {type: boolean, description: "Whether the order is a pick-and-ship order (you pick it up at the warehouse).", example: false}
         pick_n_ship_status: {type: [string, 'null'], description: "Pick-and-ship status.", enum: [awaiting_pick_up, picked_up, in_warehouse, null], example: null}
         is_b2b: {type: boolean, description: "Whether the order is a B2B order. In `GET /orders` only present for stores that handle both B2B and D2C.", example: false}
+        removal_destination: {type: [string, 'null'], enum: [RETURN_TO_BRAND, DISPOSAL, null], description: "Where the goods of a `REMOVE_EXPIRED_STOCK` order go. `null` on every other order and on expired removals created before the field existed.", example: null}
         is_first_time_buyer: {type: boolean, description: "Whether this is the buyer's first order in the store.", example: true}
         is_subscription_renewal: {type: boolean, description: "Whether the order is a subscription renewal.", example: false}
         is_click_and_collect: {type: boolean, description: "Whether the buyer picks the order up at a pickup point.", example: false}
