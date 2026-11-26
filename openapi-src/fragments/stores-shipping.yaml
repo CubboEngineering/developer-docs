@@ -106,6 +106,12 @@ paths:
         credential must have access to the source store, and the source store must already have
         a billing configuration.
 
+        - The new store also inherits which emails the source store sends to buyers: the NF-e
+          email setting of each invoice type, and the tracking-update emails (packed, in transit,
+          delivered and delivery incidents) with their colors. A setting the source store never
+          changed stays at the Cubbo default on the new store too, so `invoice_customization` in
+          the response can come back filled. Later changes to the source store are not
+          propagated to stores created before them.
         - Send `source_shipping_group_ids` to copy specific shipping groups from the source store
           instead of receiving the country defaults. Doing so also creates an Open API
           integration for the new store and returns its credentials once in
@@ -295,7 +301,10 @@ paths:
           two-letter UF code (for example `SP`); for other countries it is stored as sent.
         - `invoice_customization` replaces the current value (no merge). Only known NF-e
           purposes are kept; a blank object, or one containing only unknown purposes, is treated
-          as if the field was not sent and does not clear the existing customization.
+          as if the field was not sent and does not clear the existing customization. A store
+          created with `POST /stores` may already carry `send_email` values copied from its
+          source store: include `send_email` in every purpose you send, or that purpose's NF-e
+          email goes back to being sent.
         - Unknown or non-editable fields (such as `account_id` or `store_type`) are silently
           ignored.
       security:
