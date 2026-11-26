@@ -1900,9 +1900,9 @@ components:
           description: Id of the receipt (replenishment), as used by `GET /replenishments/{replenishment_id}`.
           example: 1259969
         received_at:
-          type: string
+          type: [string, 'null']
           format: date-time
-          description: When the receipt was completed (UTC, ISO 8601).
+          description: When the receipt was completed (UTC, ISO 8601). Null for some receipts from before mid-2025 that have no completion date; they still count and are listed last.
           example: "2026-11-18T19:23:43Z"
         quantity:
           type: integer
