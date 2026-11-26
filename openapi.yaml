@@ -15569,6 +15569,8 @@ paths:
         - Afterwards `GET /returns/{return_id}` shows `resolution: replacement` and the order in
           `created_order`. Recording an inspection first (`POST /returns/{return_id}/inspection`) is
           optional.
+        - If the recorded inspection is `rejected`, the exchange cannot be accepted: the call answers
+          422 `INSPECTION_REJECTED` and the replacement items stay reserved. Reject the exchange instead.
         - The replacement is attributed to your store's API integration, so it sends the same order
           webhooks as an order you created through the API.
         - The request body is empty. Your API credentials need the permission to resolve returns.
@@ -15654,6 +15656,10 @@ paths:
                   value:
                     error: return 98766 has no exchange products
                     code: NO_EXCHANGE_PRODUCTS
+                inspectionRejected:
+                  value:
+                    error: return 98766 has a rejected inspection
+                    code: INSPECTION_REJECTED
                 noIntegration:
                   value:
                     error: Channel integration for openapi not found, contact support.
@@ -15795,7 +15801,8 @@ paths:
         - The result is recorded once. A second call answers 422 `INSPECTION_ALREADY_RECORDED` and the
           first result is kept.
         - `unit_codes` is optional; each code must be one received on this return.
-        - The result is informative: accepting or rejecting the exchange does not depend on it.
+        - A `rejected` result blocks accepting the exchange: `POST /returns/{return_id}/create-exchange-order`
+          then answers 422 `INSPECTION_REJECTED`. Rejecting it is always possible.
         - Your API credentials need the permission to resolve returns.
       security:
         - bearerAuth: []
