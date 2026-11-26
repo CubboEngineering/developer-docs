@@ -1338,12 +1338,69 @@ components:
           example: "2026-06-30"
         stock:
           $ref: "#/components/schemas/LotStock"
+        received_quantity:
+          type: integer
+          description: |
+            Units of this lot that physically arrived at the warehouse, summed over its completed receipts.
+            Damaged units and units later shipped, expired or lost still count; units declared but never
+            received do not. 0 when the lot has no completed receipt. Returns are not receipts.
+          example: 30
+        first_received_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: When the lot's first receipt was completed (UTC, ISO 8601), or null when it has none.
+          example: "2026-11-18T19:23:43Z"
+        last_received_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: When the lot's latest receipt was completed (UTC, ISO 8601), or null when it has none.
+          example: "2026-11-19T11:56:12Z"
+        receipts:
+          type: array
+          description: >-
+            One entry per completed receipt that brought units of this lot, oldest first. Empty when there is
+            none.
+          items:
+            $ref: "#/components/schemas/LotReceipt"
       required:
         - id
         - lot_code
         - status
         - expiration_date
         - stock
+        - received_quantity
+        - first_received_at
+        - last_received_at
+        - receipts
+    LotReceipt:
+      type: object
+      description: Units of a lot received in one receipt.
+      properties:
+        replenishment_id:
+          type: integer
+          description: Id of the receipt (replenishment), as used by `GET /replenishments/{replenishment_id}`.
+          example: 1259969
+        received_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: >-
+            When the receipt was completed (UTC, ISO 8601). Null for some receipts from before mid-2025 that
+            have no completion date; they still count and are listed last.
+          example: "2026-11-18T19:23:43Z"
+        quantity:
+          type: integer
+          description: Units of this lot that physically arrived in this receipt, damaged units included.
+          example: 14
+      required:
+        - replenishment_id
+        - received_at
+        - quantity
     LotStock:
       type: object
       description: Unit counts of one lot. Buffer stock is not applied at lot level.
@@ -10145,9 +10202,10 @@ paths:
         fields and fill in one of them.
 
 
-        Returns the lots of exactly one product, with each lot's status, expiration date and stock
+        Returns the lots of exactly one product, with each lot's status, expiration date, stock
 
-        buckets. The product is addressed by `sku` or `bar_code` (at least one is required) and is
+        buckets and what the warehouse received of it (`received_quantity` and `receipts`). The product is
+        addressed by `sku` or `bar_code` (at least one is required) and is
 
         looked up across the stores your token can access; there is no `store_id` parameter.
 
@@ -10163,6 +10221,10 @@ paths:
         stores) the response is 422 naming the product ids.
 
         - Variant parent products are not addressable; query the variant's own SKU.
+
+        - `received_quantity` is what physically arrived at the warehouse in completed receipts, damaged units
+        included, never the quantity you declared. A lot received in several receipts lists one entry per
+        receipt in `receipts`. Units received without a lot code are not attributed to any lot.
       security:
         - bearerAuth: []
       parameters:
@@ -10279,6 +10341,16 @@ paths:
                       ACTIVE: 12
                       SHIPPED: 40
                       RESERVED-WITHOUT-SELL-AHEAD: 3
+                    received_quantity: 30
+                    first_received_at: "2026-11-18T19:23:43Z"
+                    last_received_at: "2026-11-19T11:56:12Z"
+                    receipts:
+                      - replenishment_id: 1259969
+                        received_at: "2026-11-18T19:23:43Z"
+                        quantity: 14
+                      - replenishment_id: 1262944
+                        received_at: "2026-11-19T11:56:12Z"
+                        quantity: 16
                 meta:
                   current_page: 1
                   next_page: null
