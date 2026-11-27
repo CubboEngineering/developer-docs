@@ -6207,11 +6207,19 @@ components:
       description: |
         What a `pending` exchange waits for. Null when `resolution` is not `pending`.
 
-        - `awaiting_receipt`: the goods have not been checked in at the warehouse yet.
+        - `awaiting_receipt`: the goods have not arrived at the warehouse yet.
+        - `awaiting_cubbo_inspection`: the goods are at the warehouse, held for Cubbo's own check-in
+          inspection (return status `AWAITING_INSPECTION`). Your inspection cannot be recorded yet.
         - `awaiting_inspection_result`: received; your inspection result is not recorded yet.
         - `awaiting_decision`: your inspection is recorded; accept or reject the exchange.
+
+        Three things are called "inspection" on a return. `awaiting_cubbo_inspection` and the
+        `AWAITING_INSPECTION` status are Cubbo's check-in inspection, also announced by the
+        `returnInspected` webhook. `awaiting_inspection_result`, `awaiting_decision` and the
+        `inspection` field are your own inspection, recorded with `POST /returns/{return_id}/inspection`.
       enum:
         - awaiting_receipt
+        - awaiting_cubbo_inspection
         - awaiting_inspection_result
         - awaiting_decision
       example: awaiting_decision
