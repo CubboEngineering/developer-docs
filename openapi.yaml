@@ -6137,6 +6137,11 @@ components:
         - returned_order_id
         - returned_order_number
         - created_at
+        - resolution
+        - resolution_detail
+        - inspection
+        - created_order
+        - invoices
       properties:
         id:
           type: integer
@@ -6188,6 +6193,250 @@ components:
           format: date-time
           description: When the return was created.
           example: "2026-10-12T15:04:05.123Z"
+        resolution:
+          anyOf:
+            - $ref: "#/components/schemas/ReturnResolution"
+            - type: "null"
+        resolution_detail:
+          anyOf:
+            - $ref: "#/components/schemas/ReturnResolutionDetail"
+            - type: "null"
+        inspection:
+          $ref: "#/components/schemas/ReturnInspection"
+        created_order:
+          $ref: "#/components/schemas/ReturnReplacementOrder"
+        invoices:
+          type: array
+          description: The return's own NF-e, then the replacement order's sale NF-e, oldest first. Empty outside Brazil.
+          items:
+            $ref: "#/components/schemas/ReturnInvoice"
+    ReturnResolution:
+      type: string
+      description: |
+        Where an `EXCHANGE` return stands or how it ended. Null for every other return type.
+
+        - `pending`: no replacement and no refund yet; `resolution_detail` says what it waits for.
+        - `replacement`: the replacement order exists (`created_order`).
+        - `refund`: you rejected the exchange with `POST /returns/{return_id}/reject-exchange`.
+        - `cancelled`: the exchange was cancelled, or nothing came back.
+      enum:
+        - pending
+        - replacement
+        - refund
+        - cancelled
+      example: pending
+    ReturnResolutionDetail:
+      type: string
+      description: |
+        What a `pending` exchange waits for. Null when `resolution` is not `pending`.
+
+        - `awaiting_receipt`: the goods have not arrived at the warehouse yet.
+        - `awaiting_cubbo_inspection`: the goods are at the warehouse, held for Cubbo's own check-in
+          inspection (return status `AWAITING_INSPECTION`). Your inspection cannot be recorded yet.
+        - `awaiting_inspection_result`: received; your inspection result is not recorded yet.
+        - `awaiting_decision`: your inspection is recorded; accept or reject the exchange.
+
+        Three things are called "inspection" on a return. `awaiting_cubbo_inspection` and the
+        `AWAITING_INSPECTION` status are Cubbo's check-in inspection, also announced by the
+        `returnInspected` webhook. `awaiting_inspection_result`, `awaiting_decision` and the
+        `inspection` field are your own inspection, recorded with `POST /returns/{return_id}/inspection`.
+      enum:
+        - awaiting_receipt
+        - awaiting_cubbo_inspection
+        - awaiting_inspection_result
+        - awaiting_decision
+      example: awaiting_decision
+    ReturnInspectionRequest:
+      type: object
+      description: Body of `POST /returns/{return_id}/inspection`.
+      required:
+        - result
+      properties:
+        result:
+          type: string
+          enum:
+            - approved
+            - rejected
+          description: The outcome of your inspection.
+          example: rejected
+        reason:
+          type: string
+          maxLength: 255
+          description: Short reason for the result.
+          example: Screen damaged by the customer
+        notes:
+          type: string
+          maxLength: 2000
+          description: Free-text notes.
+          example: Photos attached in our system
+        unit_codes:
+          type: array
+          maxItems: 100
+          description: >-
+            Unit codes (IMEI or serial number) you inspected. Each must be one received on this return. Blank
+            and repeated codes are ignored.
+          items:
+            type: string
+          example:
+            - IMEI-000000000000001
+    ReturnInspection:
+      type:
+        - object
+        - "null"
+      description: The inspection result your system recorded. Null until one is recorded.
+      required:
+        - result
+        - reason
+        - notes
+        - unit_codes
+        - created_at
+        - updated_at
+      properties:
+        result:
+          type: string
+          enum:
+            - approved
+            - rejected
+          example: rejected
+        reason:
+          type:
+            - string
+            - "null"
+          example: Screen damaged by the customer
+        notes:
+          type:
+            - string
+            - "null"
+          example: Photos attached in our system
+        unit_codes:
+          type: array
+          items:
+            type: string
+          example:
+            - IMEI-000000000000001
+        created_at:
+          type: string
+          format: date-time
+          description: When the first result was recorded.
+          example: "2026-11-24T15:04:05.123Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: When the current result was recorded. Later than `created_at` after a correction.
+          example: "2026-11-24T15:04:05.123Z"
+    ReturnReplacementOrder:
+      type:
+        - object
+        - "null"
+      description: >-
+        The replacement order of an exchange. Null when there is none. Check `status`, since a replacement can
+        still be cancelled or held.
+      required:
+        - id
+        - order_number
+        - status
+      properties:
+        id:
+          type: integer
+          example: 987700
+        order_number:
+          type: string
+          example: ORD-0001_R
+        status:
+          type: string
+          description: Order status, as in `GET /orders/{order_id}`.
+          example: processing
+    ReturnInvoice:
+      type: object
+      description: An NF-e of the return or of its replacement order. Never the XML.
+      required:
+        - key
+        - number
+        - purpose
+        - invoice_type
+        - status
+        - issued_at
+      properties:
+        key:
+          type:
+            - string
+            - "null"
+          description: The 44-digit NF-e access key.
+          example: "12345678901234567890123456789012345678901234"
+        number:
+          type:
+            - string
+            - "null"
+          description: NF-e number.
+          example: "1201"
+        purpose:
+          type: string
+          description: Why the NF-e was issued.
+          enum:
+            - RETURN_INVOICE
+            - DONATION_RETURN_INVOICE
+            - RETURN_REFUSAL_INVOICE
+            - RETURN_REFUSAL_PARTIAL_INVOICE
+            - SALE_INVOICE
+            - DONATION_INVOICE
+          example: RETURN_INVOICE
+        invoice_type:
+          type:
+            - string
+            - "null"
+          description: Who issued it.
+          example: WEBMANIA
+        status:
+          type:
+            - string
+            - "null"
+          description: NF-e status. Every status is listed, so read it to find the valid document.
+          example: APPROVED
+        issued_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: >-
+            When the NF-e was authorized, ISO 8601 with its offset. Null when the NF-e is not approved or the
+            issuer did not report the date.
+          example: "2026-11-20T10:00:00-03:00"
+    ReturnInspectionRecorded:
+      type: object
+      description: Response of `POST /returns/{return_id}/inspection`.
+      required:
+        - id
+        - status
+        - return_type
+        - resolution
+        - resolution_detail
+        - inspection
+        - created_order
+        - invoices
+      properties:
+        id:
+          type: integer
+          example: 98766
+        status:
+          $ref: "#/components/schemas/ReturnStatus"
+        return_type:
+          $ref: "#/components/schemas/ReturnType"
+        resolution:
+          anyOf:
+            - $ref: "#/components/schemas/ReturnResolution"
+            - type: "null"
+        resolution_detail:
+          anyOf:
+            - $ref: "#/components/schemas/ReturnResolutionDetail"
+            - type: "null"
+        inspection:
+          $ref: "#/components/schemas/ReturnInspection"
+        created_order:
+          $ref: "#/components/schemas/ReturnReplacementOrder"
+        invoices:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReturnInvoice"
     ReturnCancelled:
       type: object
       description: Response of `PATCH /returns/{return_id}/cancel`.
@@ -15358,6 +15607,12 @@ paths:
         - For products tracked by unit code (IMEI or serial number), each `return_products` entry
           also lists the `unit_codes` that shipped on the original order. Products that do not track
           unit codes never carry that key.
+        - `resolution` and `resolution_detail` say where an `EXCHANGE` stands or how it ended: pending
+          (awaiting receipt, awaiting your inspection result, awaiting your decision), `replacement`,
+          `refund` or `cancelled`. They are null for every other return type.
+        - `inspection` is the result your system recorded with `POST /returns/{return_id}/inspection`.
+        - `created_order` is the replacement order, and `invoices` lists the return's own NF-e and the
+          replacement's sale NF-e (Brazil), without the XML.
         - A return that does not exist or does not belong to one of your stores answers 404.
       security:
         - bearerAuth: []
@@ -15407,6 +15662,11 @@ paths:
                 returned_order_id: 445566
                 returned_order_number: ORD-0001
                 created_at: "2026-10-12T15:04:05.123Z"
+                resolution: null
+                resolution_detail: null
+                inspection: null
+                created_order: null
+                invoices: []
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -15620,6 +15880,11 @@ paths:
           `REENTERED`. Earlier statuses answer 422 `RETURN_NOT_RECEIVED`.
         - Each return gets one replacement. A second call answers 422 `RETURN_ALREADY_HAS_ORDER`.
         - The replacement order number is the original order number with an `_R` suffix.
+        - Afterwards `GET /returns/{return_id}` shows `resolution: replacement` and the order in
+          `created_order`. Recording an inspection first (`POST /returns/{return_id}/inspection`) is
+          optional.
+        - If the recorded inspection is `rejected`, the exchange cannot be accepted: the call answers
+          422 `INSPECTION_REJECTED` and the replacement items stay reserved. Reject the exchange instead.
         - The replacement is attributed to your store's API integration, so it sends the same order
           webhooks as an order you created through the API.
         - The request body is empty. Your API credentials need the permission to resolve returns.
@@ -15705,6 +15970,10 @@ paths:
                   value:
                     error: return 98766 has no exchange products
                     code: NO_EXCHANGE_PRODUCTS
+                inspectionRejected:
+                  value:
+                    error: return 98766 has a rejected inspection
+                    code: INSPECTION_REJECTED
                 noIntegration:
                   value:
                     error: Channel integration for openapi not found, contact support.
@@ -15828,6 +16097,150 @@ paths:
                     code: RETURN_NOT_CANCELABLE
         "500":
           $ref: "#/components/responses/InternalServerError"
+  /returns/{return_id}/inspection:
+    post:
+      tags:
+        - Returns
+      operationId: recordReturnInspection
+      summary: Record your inspection of an exchange
+      description: |
+        For stores where your system decides each exchange, record the result of inspecting the device
+        that came back, before you accept the exchange (`POST /returns/{return_id}/create-exchange-order`)
+        or reject it (`POST /returns/{return_id}/reject-exchange`). Cubbo stores the result and shows
+        it in `GET /returns/{return_id}`, where the return moves from `resolution_detail:
+        awaiting_inspection_result` to `awaiting_decision`.
+
+        - The return must be of type `EXCHANGE`, already received (status `RECEIVED` or `REENTERED`)
+          and without a replacement order.
+        - To correct a result, call again: while the exchange is still open (no replacement order, not
+          rejected) the new result replaces the previous one and the call answers `200` instead of `201`.
+          Every field is replaced, so send the whole inspection again. Cubbo keeps the replaced results.
+          Once the exchange is accepted or rejected, the call answers 422.
+        - `unit_codes` is optional; each code must be one received on this return.
+        - A `rejected` result blocks accepting the exchange: `POST /returns/{return_id}/create-exchange-order`
+          then answers 422 `INSPECTION_REJECTED`. Rejecting it is always possible.
+        - Your API credentials need the permission to resolve returns.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: return_id
+          in: path
+          required: true
+          description: Numeric id of the `EXCHANGE` return.
+          schema:
+            type: integer
+          example: 98766
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReturnInspectionRequest"
+            example:
+              result: rejected
+              reason: Screen damaged by the customer
+              notes: Photos attached in our system
+              unit_codes:
+                - IMEI-000000000000001
+      responses:
+        "200":
+          description: An earlier result was replaced (a correction). Same body as `201`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReturnInspectionRecorded"
+        "201":
+          description: The inspection was recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReturnInspectionRecorded"
+              example:
+                id: 98766
+                status: RECEIVED
+                return_type: EXCHANGE
+                resolution: pending
+                resolution_detail: awaiting_decision
+                inspection:
+                  result: rejected
+                  reason: Screen damaged by the customer
+                  notes: Photos attached in our system
+                  unit_codes:
+                    - IMEI-000000000000001
+                  created_at: "2026-11-24T15:04:05.123Z"
+                  updated_at: "2026-11-24T15:04:05.123Z"
+                created_order: null
+                invoices: []
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: No return with that id in your stores.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: no return found with return_id 98766
+        "409":
+          description: >-
+            Another decision on the same exchange is still being processed, or the return is being received at
+            the warehouse right now. Retry after a moment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReturnError"
+              example:
+                error: an exchange decision for this return is already in progress
+                code: EXCHANGE_DECISION_IN_FLIGHT
+        "422":
+          description: The inspection cannot be recorded. Validation errors of the body carry `code` null.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReturnError"
+              examples:
+                notExchange:
+                  value:
+                    error: return 98766 is not an exchange
+                    code: RETURN_NOT_EXCHANGE
+                notReceived:
+                  value:
+                    error: return 98766 has not been received yet
+                    code: RETURN_NOT_RECEIVED
+                alreadyHasOrder:
+                  value:
+                    error: return 98766 already has an exchange order
+                    code: RETURN_ALREADY_HAS_ORDER
+                unknownUnitCodes:
+                  value:
+                    error: 1 unit_codes were not received on this return
+                    code: UNKNOWN_UNIT_CODES
+                invalidUnitCodes:
+                  value:
+                    error: unit_codes must be an array of strings
+                    code: INVALID_UNIT_CODES
+                tooManyUnitCodes:
+                  value:
+                    error: Parameter unit_codes cannot have length greater than 100
+                    code: null
+                missingResult:
+                  value:
+                    error: Parameter result is required
+                    code: null
+                invalidResult:
+                  value:
+                    error: "Validation failed: Result is not included in the list"
+                    code: null
+                reasonTooLong:
+                  value:
+                    error: "Validation failed: Reason is too long (maximum is 255 characters)"
+                    code: null
+                notesTooLong:
+                  value:
+                    error: "Validation failed: Notes is too long (maximum is 2000 characters)"
+                    code: null
+        "500":
+          $ref: "#/components/responses/InternalServerError"
   /returns/{return_id}/reject-exchange:
     post:
       tags:
@@ -15844,6 +16257,7 @@ paths:
         - The return must be of type `EXCHANGE`, already received (status `RECEIVED` or `REENTERED`),
           and without a replacement order.
         - A second call answers 422 `RETURN_NOT_EXCHANGE`, since the return is no longer an exchange.
+        - Afterwards `GET /returns/{return_id}` shows `resolution: refund`.
         - The request body is empty. Your API credentials need the permission to resolve returns.
       security:
         - bearerAuth: []
