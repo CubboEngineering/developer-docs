@@ -6861,6 +6861,54 @@ components:
                   unique_code: SP1
             open_api_integration:
               $ref: "#/components/schemas/OpenApiIntegrationCredentials"
+            ncm_configurations:
+              $ref: "#/components/schemas/CopiedNcmConfigurations"
+    CopiedNcmConfigurations:
+      type: object
+      description: NCM configurations copied to the new store. Present only when `source_ncm_configuration_ids` was sent.
+      required:
+        - copied
+        - skipped
+      properties:
+        copied:
+          type: array
+          description: Configurations created on the new store
+          items:
+            type: object
+            required:
+              - id
+              - ncm
+              - source_ncm_configuration_id
+            properties:
+              id:
+                type: integer
+                description: Id of the new store's NCM configuration; usable as a product `tax_code`
+                example: 31002
+              ncm:
+                type: string
+                description: NCM code, 8 digits
+                example: "21069030"
+              source_ncm_configuration_id:
+                type: integer
+                description: Id of the configuration it was copied from
+                example: 20527
+        skipped:
+          type: array
+          description: >-
+            Configurations not copied because the new store already had that NCM. Always empty for a store
+            created in the same request; listed for completeness.
+          items:
+            type: object
+            required:
+              - source_ncm_configuration_id
+              - ncm
+            properties:
+              source_ncm_configuration_id:
+                type: integer
+                example: 20528
+              ncm:
+                type: string
+                example: "35061090"
     OpenApiIntegrationCredentials:
       type: object
       description: >-
@@ -7014,6 +7062,22 @@ components:
               - return_status
           example:
             - order_status
+        source_ncm_store_id:
+          type: integer
+          description: >-
+            Store to copy the NCM configurations from. Must belong to the same account as `source_store_id`.
+            Defaults to `source_store_id`. Requires `source_ncm_configuration_ids`.
+          example: 1240
+        source_ncm_configuration_ids:
+          type: array
+          description: >-
+            Ids of the NCM configurations to copy to the new store, all from the store named by
+            `source_ncm_store_id` (or the source store). Omitted means none are copied.
+          items:
+            type: integer
+          example:
+            - 20527
+            - 20528
     StoreUpdateRequest:
       type: object
       description: Send only the fields to change. At least one must be present.
@@ -7251,6 +7315,42 @@ components:
                 Null normally. Set when the account was provisioned but the data could not be copied onto the
                 store; contact Cubbo support.
               example: null
+        ncm_configurations_warnings:
+          type: array
+          description: >-
+            NCM configurations that do not fit the store's tax regime or state, one entry per configuration
+            and reason. Present only when there is at least one.
+          items:
+            type: object
+            required:
+              - id
+              - ncm
+              - columns
+              - reason
+            properties:
+              id:
+                type: integer
+                description: Id of the store's NCM configuration
+                example: 31002
+              ncm:
+                type: string
+                example: "21069030"
+              columns:
+                type: array
+                description: Fields of the configuration that cause the warning
+                items:
+                  type: string
+                example:
+                  - cfop_tax_situation
+                  - cfop_tax_situation_other_state
+              reason:
+                type: string
+                enum:
+                  - tax_situation_not_valid_for_simples_nacional
+                  - tax_situation_not_valid_for_lucro_real
+                  - tax_situation_not_valid_for_lucro_presumido
+                  - c_benef_not_for_store_state
+                example: tax_situation_not_valid_for_simples_nacional
     DigitalCertificateRequest:
       type: object
       required:
@@ -16993,6 +17093,15 @@ paths:
         - The CNPJ (Cadastro Nacional da Pessoa Juridica, the Brazilian company tax id) is
           accepted with or without punctuation and stored on the store as digits only.
         - Provider credentials are never returned.
+        - `ncm_configurations_warnings` lists the store's NCM configurations that do not fit its
+          fiscal setup, so invoices using them would be rejected by SEFAZ. Two cases:
+          `tax_situation_not_valid_for_<regime>` (an ICMS tax situation that is not a CSOSN on a
+          Simples Nacional store, or a CSOSN such as `102` on a Lucro Real / Lucro Presumido
+          store) and `c_benef_not_for_store_state` (a `c_benef` benefit code of another state).
+          The usual cause is configurations copied in `POST /stores` from a model store of
+          another regime or state. It is a warning only: the account is provisioned anyway. Fix
+          the listed configurations before creating products with them. The key is absent when
+          there is nothing to report.
       security:
         - bearerAuth: []
       requestBody:
@@ -17120,6 +17229,21 @@ paths:
           and on invoices where the store is the recipient. When you omit it or send it blank, the
           source store's phone is copied; if the source store has none, the new store has none
           either. You can change it later with `PATCH /store`.
+        - Send `source_ncm_configuration_ids` to copy NCM configurations (the fiscal rules per NCM
+          code: CFOPs, ICMS/IPI/PIS/COFINS situations and rates, IBS/CBS) to the new store. They
+          are copied from the source store, or from `source_ncm_store_id` when you send it; that
+          store must belong to the same account. Every id must be an NCM configuration of that
+          store, otherwise nothing is created. All values are copied as they are, including
+          `ncm_validated`. The response lists the new ids in `ncm_configurations.copied`; use them
+          (or the NCM code) as `tax_code` when you create the store's products. Without
+          `source_ncm_configuration_ids` no NCM configuration is copied.
+        - NCM configurations depend on the tax regime: Simples Nacional stores use CSOSN codes
+          (for example `102`), the other regimes use CST codes (for example `00`). The new store's
+          regime is only known when you call `POST /store/fiscal-account`, so keep one model store
+          per regime (and state, if you use `c_benef` codes) and copy from the one that matches
+          the new store. If the copied rules do not
+          match the regime you then send, `POST /store/fiscal-account` returns
+          `ncm_configurations_warnings`.
         - The whole operation is transactional: on any validation failure nothing is created.
       security:
         - bearerAuth: []
@@ -17146,6 +17270,10 @@ paths:
                 - inventory_movement
                 - replenishment_status
                 - return_status
+              source_ncm_store_id: 1240
+              source_ncm_configuration_ids:
+                - 20527
+                - 20528
       responses:
         "201":
           description: >-
@@ -17205,6 +17333,15 @@ paths:
                     - return_status
                   webhook_consumer_secret: <webhook-secret-shown-once>
                   webhook_consumer_secret_reason: null
+                ncm_configurations:
+                  copied:
+                    - id: 31002
+                      ncm: "21069030"
+                      source_ncm_configuration_id: 20527
+                    - id: 31003
+                      ncm: "35061090"
+                      source_ncm_configuration_id: 20528
+                  skipped: []
         "401":
           $ref: "#/components/responses/Unauthorized"
         "422":
@@ -17267,6 +17404,15 @@ paths:
                 noShippingGroupsFound:
                   value:
                     error: No shipping groups found on source store 1234 for the given ids
+                ncmStoreRequiresIds:
+                  value:
+                    error: source_ncm_store_id requires source_ncm_configuration_ids
+                ncmStoreNotInAccount:
+                  value:
+                    error: source_ncm_store_id 1240 not found in the source store's account
+                ncmConfigurationsNotFound:
+                  value:
+                    error: NCM configurations 99999 not found on store 1240
         "500":
           $ref: "#/components/responses/InternalServerError"
 webhooks:
